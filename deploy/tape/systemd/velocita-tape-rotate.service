@@ -1,0 +1,9 @@
+[Unit]
+Description=Velocita verifiable tape: end the current segment and start the next
+
+[Service]
+Type=oneshot
+Environment=TAPE_ROTATE_INTERVAL=43200
+Environment=TAPE_ROTATE_KEEP=2
+ExecStart=/bin/sh %h/velocita-tape/rotate.sh
+TimeoutStartSec=30min

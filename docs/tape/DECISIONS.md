@@ -452,3 +452,31 @@ out-of-memory restarts and floods could not keep hitting the shared Wi-Fi. Logs,
 (417, 357 and 419 MB); exporters, the tape Prometheus and the dashboard stay up. Restarting needs two
 fixes: a bounded log (rotating the incarnation on a schedule, or real compaction) and Aeron frames that
 fit the tunnel.
+
+**D-55. The tape is a chain of 12-hour segments (owner decision, 2026-11-12).** At 00:00 and 12:00 UTC
+every host's `velocita-tape-rotate.timer` runs `rotate.sh`: stop the recorder, wait 75 s so a final signed
+head covers every recorded observation, stop the voter, move the segment to `data/segments/<incarnation>`,
+and start the next segment. The new incarnation is the boundary's Unix time, so the three hosts agree
+without talking to each other. A new entry type, `segment_start`, carries the previous segment's last
+signed head (incarnation, tick, tree size, root); the first leader of a segment proposes it from the head
+file named by `previous_head_file`, after checking that head has at least two valid signatures, and the
+reducer accepts it once per segment (later ones are `segment_refused`). Because it is an ordinary leaf, the
+new segment's signed heads cover the link. `velocita-tape-verify --previous-head FILE` checks a segment's
+link against the previous segment's head and its signatures. The finished log is gzipped, and each host
+keeps its newest `TAPE_ROTATE_KEEP` segments (NUC2 keeps all). Amends ADR 0030's single-log design:
+history is now one hash-linked log per segment. Tests: the reducer and the Python reference agree on the
+new entry (mutant `segment-start-twice` killed); six rotation tests with a stand-in `systemctl`; a local
+three-voter run that rotates mid-run and verifies both segments and the link, and the verifier rejects a
+link to the wrong head.
+
+**D-56. Aeron frames fit the tunnel.** Every tape publication now uses `mtu=1216` (Aeron needs a multiple
+of 32): with IP and UDP headers that is 1,244 bytes over IPv4 and 1,264 over IPv6, under Tailscale's
+1,280-byte MTU, so no frame is split into IP fragments.
+
+**D-57. Recovery no longer holds the log four times over.** Recovery read the whole log into a buffer,
+copied every entry out of it, read the whole file again to find its valid end, and then Raft copied every
+entry once more: about four times the log in memory at once, which matches the Pi's 1.45 GB for a 357 MB
+log when it was killed (D-54). It now reads the file once, refers to entries by offset, finds the valid
+end in the same pass, and frees the buffer once Raft has its copies, so the peak is about twice the log
+and steady state about once. (`podman stats` also counts the log's page cache, which the kernel can
+reclaim.)

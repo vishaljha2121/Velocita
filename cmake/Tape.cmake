@@ -14,7 +14,7 @@ target_compile_options(velocita_tape_replica PRIVATE -Wall -Wextra -Wpedantic)
 
 find_package(OpenSSL 3 REQUIRED)
 add_library(velocita_tape_voter src/tape_auth.cpp src/tape_config.cpp src/tape_signing.cpp src/tape_peer_codec.cpp
-    src/tape_voter.cpp)
+    src/tape_voter.cpp src/tape_head_file.cpp)
 target_include_directories(velocita_tape_voter PUBLIC include)
 target_link_libraries(velocita_tape_voter PUBLIC velocita_tape_replica OpenSSL::Crypto)
 target_compile_options(velocita_tape_voter PRIVATE -Wall -Wextra -Wpedantic)
@@ -84,6 +84,8 @@ if(BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND} -DTARGET_FILE=$<TARGET_FILE:velocita-tape-exporter> -DCHECK=MET-1
             "-DFORBIDDEN=velocita" -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_tape_symbols.cmake)
     add_test(NAME tape-watchdog-tests COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tape_watchdog.py)
+    add_test(NAME tape-rotate-tests COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tape_rotate.py)
+    set_tests_properties(tape-rotate-tests PROPERTIES TIMEOUT 120)
     set_tests_properties(tape-watchdog-tests PROPERTIES TIMEOUT 120)
     add_executable(tape-submitter-tests tests/tape_submitter_tests.cpp)
     target_link_libraries(tape-submitter-tests PRIVATE velocita_tape_recorder)

@@ -91,6 +91,8 @@ MUTANTS = [
      "flight.wait_ms = flight.wait_ms;", "replica", "a silent follower gets a backed-off probe, not the backlog"),
     ("recorder-ignores-byte-budget", "src/tape_recorder.cpp", "    if (tokens_ < static_cast<double>(bytes)) return false;",
      "    if (false) return false;", "submitter", "no second sends more than the budget plus one burst"),
+    ("segment-start-twice", R, "            if (state.segment_started) {\n                result.code = ApplyCode::segment_refused;",
+     "            if (false) {\n                result.code = ApplyCode::segment_refused;", "core", "test_a_segment_records_its_predecessor_once"),
     ("skip-hmac-check", "src/tape_auth.cpp", "    if (!same(expected.bytes, frame.last(32))) return std::nullopt;", "",
      "voter", "a frame sealed with the wrong key is rejected"),
     ("wal-accepts-corruption", "src/tape_wal.cpp", "            if (allow_torn_tail && last) break;", "            if (allow_torn_tail) break;",

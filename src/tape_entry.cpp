@@ -189,6 +189,11 @@ std::size_t encode_entry(const Entry& entry, std::span<std::byte> out) noexcept 
         w.digest(h->root);
         w.u8(h->voter);
         w.bytes(h->signature);
+    } else if (const auto* g = std::get_if<SegmentStart>(&entry)) {
+        w.u64(g->previous_incarnation);
+        w.u64(g->previous_tick);
+        w.u64(g->previous_tree_size);
+        w.digest(g->previous_root);
     }
     return w.finish();
 }
@@ -249,6 +254,13 @@ std::optional<Entry> decode_entry(std::span<const std::byte> bytes) noexcept {
                 return std::nullopt;
             std::memcpy(h.signature.data(), sig.data(), kSignatureBytes);
             return Entry{h};
+        }
+        case EntryType::segment_start: {
+            SegmentStart g;
+            if (!r.u64(g.previous_incarnation) || !r.u64(g.previous_tick) || !r.u64(g.previous_tree_size) ||
+                !r.digest(g.previous_root) || !r.done())
+                return std::nullopt;
+            return Entry{g};
         }
     }
     return std::nullopt;

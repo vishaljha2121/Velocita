@@ -59,12 +59,11 @@ void write_all(int fd, const std::byte* p, std::size_t n) {
 
 }
 
-std::vector<WalEntry> read_wal_file(const std::filesystem::path& path, bool allow_torn_tail) {
-    std::vector<WalEntry> entries;
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return entries;
-    const std::vector<char> raw((std::istreambuf_iterator<char>(in)), {});
-    const auto* data = reinterpret_cast<const std::byte*>(raw.data());
+namespace {
+
+std::vector<WalRecord> scan(std::span<const std::byte> raw, bool allow_torn_tail, std::size_t& valid) {
+    std::vector<WalRecord> records;
+    const auto* data = raw.data();
     std::size_t at = 0;
     while (at < raw.size()) {
         const bool header_fits = raw.size() - at >= kHeaderBytes;
@@ -88,18 +87,40 @@ std::vector<WalEntry> read_wal_file(const std::filesystem::path& path, bool allo
         const auto term = static_cast<std::int64_t>(get(data + at + 13, 8));
         const auto type = static_cast<std::int32_t>(get(data + at + 21, 4));
         if (kind == kTruncateRecord) {
-            while (!entries.empty() && entries.back().index >= index) entries.pop_back();
+            while (!records.empty() && records.back().index >= index) records.pop_back();
         } else if (kind == kEntryRecord) {
-            while (!entries.empty() && entries.back().index >= index) entries.pop_back();
-            if ((entries.empty() && index != 1) || (!entries.empty() && entries.back().index + 1 != index))
+            while (!records.empty() && records.back().index >= index) records.pop_back();
+            if ((records.empty() && index != 1) || (!records.empty() && records.back().index + 1 != index))
                 throw StorageError("write-ahead log index sequence is broken at index " + std::to_string(index));
-            entries.push_back({index, term, type, std::vector<std::byte>(data + at + kHeaderBytes,
-                                                                         data + at + kHeaderBytes + length)});
+            records.push_back({index, term, type, at + kHeaderBytes, length});
         } else {
             throw StorageError("write-ahead log has an unknown record kind");
         }
         at += kHeaderBytes + length + 4;
     }
+    valid = at;
+    return records;
+}
+
+std::vector<std::byte> read_all(const std::filesystem::path& path) {
+    std::vector<std::byte> raw;
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (!in) return raw;
+    raw.resize(static_cast<std::size_t>(in.tellg()));
+    in.seekg(0);
+    in.read(reinterpret_cast<char*>(raw.data()), static_cast<std::streamsize>(raw.size()));
+    return raw;
+}
+
+}
+
+std::vector<WalEntry> read_wal_file(const std::filesystem::path& path, bool allow_torn_tail) {
+    const auto raw = read_all(path);
+    std::size_t valid = 0;
+    std::vector<WalEntry> entries;
+    for (const auto& r : scan(raw, allow_torn_tail, valid))
+        entries.push_back({r.index, r.term, r.type, std::vector<std::byte>(raw.begin() + static_cast<std::ptrdiff_t>(r.offset),
+                                                                           raw.begin() + static_cast<std::ptrdiff_t>(r.offset + r.length))});
     return entries;
 }
 
@@ -112,28 +133,11 @@ TapeWal::~TapeWal() {
     if (fd_ >= 0) ::close(fd_);
 }
 
-std::vector<WalEntry> TapeWal::recover() {
-    auto entries = read_wal_file(log_path_, true);
-    std::uint64_t good_bytes = 0;
-    {
-        std::ifstream in(log_path_, std::ios::binary | std::ios::ate);
-        if (in) good_bytes = static_cast<std::uint64_t>(in.tellg());
-    }
-    std::uint64_t valid = 0;
-    if (good_bytes > 0) {
-        std::ifstream in(log_path_, std::ios::binary);
-        const std::vector<char> raw((std::istreambuf_iterator<char>(in)), {});
-        const auto* data = reinterpret_cast<const std::byte*>(raw.data());
-        std::size_t at = 0;
-        while (raw.size() - at >= kHeaderBytes) {
-            const auto length = static_cast<std::uint32_t>(get(data + at + 25, 4));
-            if (length > kMaxRecordBytes || raw.size() - at < kHeaderBytes + length + 4) break;
-            const auto crc = static_cast<std::uint32_t>(get(data + at + kHeaderBytes + length, 4));
-            if (crc != velocita::crc32(std::span(data + at, kHeaderBytes + length))) break;
-            at += kHeaderBytes + length + 4;
-        }
-        valid = at;
-    }
+WalRecovery TapeWal::recover() {
+    WalRecovery out;
+    out.raw = read_all(log_path_);
+    std::size_t valid = 0;
+    out.records = scan(out.raw, true, valid);
     fd_ = ::open(log_path_.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC, 0600);
     if (fd_ < 0) throw StorageError("cannot open the write-ahead log");
     if (::ftruncate(fd_, static_cast<off_t>(valid)) != 0) throw StorageError("cannot trim a torn tail");
@@ -141,8 +145,8 @@ std::vector<WalEntry> TapeWal::recover() {
     full_sync(fd_, "log");
     sync_directory(directory_);
     bytes_ = valid;
-    written_index_ = synced_index_ = entries.empty() ? 0 : entries.back().index;
-    return entries;
+    written_index_ = synced_index_ = out.records.empty() ? 0 : out.records.back().index;
+    return out;
 }
 
 void TapeWal::write_record(std::uint8_t kind, std::uint64_t index, std::int64_t term, std::int32_t type,

@@ -23,7 +23,7 @@ Endpoint Endpoint::parse(const std::string& text) {
 AeronLink::AeronLink(AeronRuntime& runtime, const Endpoint& listen, const std::map<Party, Endpoint>& destinations) {
     subscription_ = runtime.add_subscription(listen.channel(), kStreamId);
     for (const auto& [party, endpoint] : destinations)
-        publications_.emplace(party, runtime.add_publication(endpoint.channel(), kStreamId));
+        publications_.emplace(party, runtime.add_publication(endpoint.channel() + "|mtu=" + std::to_string(kMtu), kStreamId));
     assembler_ = std::make_unique<aeron::FragmentAssembler>(
         [this](aeron::concurrent::AtomicBuffer& buffer, aeron::util::index_t offset, aeron::util::index_t length,
                aeron::Header&) {

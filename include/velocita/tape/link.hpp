@@ -25,6 +25,8 @@ struct Endpoint {
     [[nodiscard]] static Endpoint parse(const std::string& text);
 };
 
+inline constexpr std::size_t kMtu = 1216;
+
 [[nodiscard]] std::string aeron_metrics(const AeronRuntime& runtime, const std::string& labels);
 
 class AeronLink {

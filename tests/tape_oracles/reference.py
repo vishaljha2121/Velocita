@@ -15,7 +15,7 @@ CHANNELS = ["INSTRUMENT", "EBBO", "DEPTH", "TRADE"]
 CHANNEL_CODE = {1: "INSTRUMENT", 2: "EBBO", 3: "DEPTH", 4: "TRADE", 5: "HEARTBEAT", 6: "CONTROL"}
 KIND_CODE = {1: "SNAPSHOT", 2: "UPDATE", 3: "SNAPSHOT_COMPLETE", 4: "HEARTBEAT", 5: "CONTROL", 6: "UNPARSED"}
 APPLIED, DUPLICATE, OUT_OF_ORDER, UNKNOWN_RECORDER, MALFORMED, MISMATCH, PART_STORED, PART_REFUSED, \
-    TICK_REFUSED, HEAD_REFUSED, SYMBOL_CAPACITY = range(11)
+    TICK_REFUSED, HEAD_REFUSED, SYMBOL_CAPACITY, SEGMENT_REFUSED = range(12)
 
 
 def reply_owner(recorder, session, request):
@@ -60,6 +60,7 @@ class ReferenceTape:
         self.open = OrderedDict()
         self.closed = []
         self.tick = 0
+        self.segment = None
         self.assembly = {}
 
     def book_hash(self, symbol):
@@ -282,6 +283,12 @@ class ReferenceTape:
                         b.go_unknown("gap")
             else:
                 code = TICK_REFUSED
+        elif entry["type"] == 6:
+            if self.segment is None:
+                self.segment = (entry["previous_incarnation"], entry["previous_tick"], entry["previous_tree_size"],
+                                entry["previous_root"])
+            else:
+                code = SEGMENT_REFUSED
         else:
             code = HEAD_REFUSED
         state, digest = "unknown", ""
@@ -366,6 +373,12 @@ def decode(raw):
     elif t == 5:
         out["tick"], out["size"] = take("<QQ")
         at += 32 + 1 + 64
+    elif t == 6:
+        out["previous_incarnation"], out["previous_tick"], out["previous_tree_size"] = take("<QQQ")
+        if at + 32 > len(raw):
+            raise ValueError("short")
+        out["previous_root"] = raw[at:at + 32]
+        at += 32
     else:
         return None
     if at != len(raw):

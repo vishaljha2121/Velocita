@@ -37,6 +37,7 @@ struct VoterConfig {
     std::uint64_t ack_ms{200};
     std::uint64_t state_page_ms{1000};
     std::size_t pending_per_recorder{8192};
+    std::optional<SegmentStart> previous_segment;
 };
 
 struct HeadRecord {
@@ -65,6 +66,7 @@ private:
     void send_acks();
     void write_state_page(std::int64_t utc_ns) const;
     std::function<std::string()> extra_metrics_;
+    std::int64_t segment_proposed_term_{-1};
     void broadcast_submission(std::span<const std::byte> bytes);
     void publish_head(std::uint64_t tick);
 

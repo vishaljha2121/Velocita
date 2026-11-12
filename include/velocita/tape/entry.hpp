@@ -78,7 +78,14 @@ struct HeadSignature {
     std::array<std::byte, kSignatureBytes> signature{};
 };
 
-using Entry = std::variant<Observation, ObservationPart, RecorderEvent, Tick, HeadSignature>;
+struct SegmentStart {
+    std::uint64_t previous_incarnation{};
+    std::uint64_t previous_tick{};
+    std::uint64_t previous_tree_size{};
+    Digest previous_root;
+};
+
+using Entry = std::variant<Observation, ObservationPart, RecorderEvent, Tick, HeadSignature, SegmentStart>;
 
 [[nodiscard]] EntryType entry_type(const Entry& entry) noexcept;
 

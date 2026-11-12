@@ -36,7 +36,9 @@ inline constexpr std::uint32_t kUnknownClockError = 0xFFFF'FFFFu;
 
 enum class Channel : std::uint8_t { none = 0, instrument = 1, ebbo = 2, depth = 3, trade = 4, heartbeat = 5, control = 6 };
 enum class UpdateKind : std::uint8_t { none = 0, snapshot = 1, update = 2, snapshot_complete = 3, heartbeat = 4, control = 5, unparsed = 6 };
-enum class EntryType : std::uint8_t { observation = 1, observation_part = 2, recorder_event = 3, tick = 4, head_signature = 5 };
+enum class EntryType : std::uint8_t {
+    observation = 1, observation_part = 2, recorder_event = 3, tick = 4, head_signature = 5, segment_start = 6
+};
 enum class EventKind : std::uint8_t {
     session_start = 1, gap = 2, regression = 3, overflow = 4, dead_connection = 5, reconnect = 6, resubscribe = 7, oversize = 8
 };
@@ -59,6 +61,7 @@ enum class ApplyCode : std::uint8_t {
     tick_refused = 8,
     head_refused = 9,
     symbol_capacity = 10,
+    segment_refused = 11,
 };
 
 inline constexpr std::uint16_t kFlagCrossed = 1u << 0;

@@ -414,6 +414,14 @@ void Voter::step(std::uint64_t now_ms, std::int64_t utc_ns) {
     } else if (!replica_->is_leader()) {
         last_tick_ms_ = now_ms;
     }
+    if (config_.previous_segment && replica_->is_leader() && !replica_->state().segment_started) {
+        const auto term = replica_->status().term;
+        if (term != segment_proposed_term_) {
+            std::vector<std::byte> bytes(128);
+            bytes.resize(encode_entry(*config_.previous_segment, bytes));
+            if (replica_->propose(bytes) == ProposeStatus::proposed) segment_proposed_term_ = term;
+        }
+    }
     drain_pending();
     if (now_ms - last_ack_ms_ >= config_.ack_ms) {
         last_ack_ms_ = now_ms;

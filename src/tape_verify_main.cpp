@@ -1,4 +1,5 @@
 // velocita-tape-verify: rebuilds the tape from a voter's log and checks every leaf, head, signature and tick.
+#include "velocita/tape/head_file.hpp"
 #include "velocita/tape/reducer.hpp"
 #include "velocita/tape/signing.hpp"
 #include "velocita/tape/wal.hpp"
@@ -68,6 +69,7 @@ int main(int argc, char** argv) {
     Config config;
     std::string book_symbol;
     std::optional<std::uint64_t> until_seq;
+    std::filesystem::path previous_head;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : std::string(); };
@@ -81,10 +83,12 @@ int main(int argc, char** argv) {
         else if (a == "--tick-ms") tick_ms = std::stoull(next());
         else if (a == "--book") book_symbol = next();
         else if (a == "--until-seq") until_seq = std::stoull(next());
+        else if (a == "--previous-head") previous_head = next();
         else {
             std::cerr << "usage: velocita-tape-verify --wal FILE [--heads DIR --key PUB1 --key PUB2 --key PUB3 --incarnation N]\n"
                          "       [--compare-wal OTHER_FILE]\n"
-                         "       [--verdict-ticks N --head-every K --tick-ms T] [--book SYMBOL --until-seq N]\n";
+                         "       [--verdict-ticks N --head-every K --tick-ms T] [--book SYMBOL --until-seq N]\n"
+                         "       [--previous-head HEAD_FILE_OF_THE_PREVIOUS_SEGMENT]\n";
             return 64;
         }
     }
@@ -174,10 +178,28 @@ int main(int argc, char** argv) {
             previous = &h;
             ++verified_heads;
         }
+        if (!previous_head.empty()) {
+            if (!state->segment_started) fail("segment link", 0, "a segment_start entry", "none");
+            const auto prev = read_head_file(previous_head);
+            std::array<std::optional<VerifyKey>, 3> prev_keys;
+            for (std::size_t k = 0; k < 3 && k < keys.size(); ++k) prev_keys[k] = VerifyKey::load(keys[k]);
+            if (valid_head_signatures(prev, prev_keys) < 2)
+                fail("previous head signatures", prev.tick, ">=2 valid", "fewer");
+            const auto& g = state->segment;
+            if (g.previous_incarnation != prev.incarnation || g.previous_tick != prev.tick ||
+                g.previous_tree_size != prev.tree_size || g.previous_root != prev.root)
+                fail("segment link", prev.tick, v2::to_hex(prev.root) + "@" + std::to_string(prev.tree_size),
+                     v2::to_hex(g.previous_root) + "@" + std::to_string(g.previous_tree_size));
+        }
         std::cout << "{\"ok\":true,\"entries\":" << entries.size() << ",\"tree_size\":" << leaves.size()
                   << ",\"root\":\"" << v2::to_hex(state->frontier.root()) << "\",\"heads_verified\":" << verified_heads
                   << ",\"last_tick\":" << last_tick << ",\"refused_ticks\":" << refused_ticks
                   << ",\"tick_spacing_flags\":" << spacing_flags << ",\"symbols\":" << int(state->symbol_count);
+        if (state->segment_started)
+            std::cout << ",\"previous_segment\":{\"incarnation\":" << state->segment.previous_incarnation
+                      << ",\"tick\":" << state->segment.previous_tick << ",\"tree_size\":" << state->segment.previous_tree_size
+                      << ",\"root\":\"" << v2::to_hex(state->segment.previous_root) << "\",\"linked\":"
+                      << (previous_head.empty() ? "false" : "true") << "}";
         if (!book_symbol.empty()) {
             std::cout << ",\"book\":{\"symbol\":\"" << book_symbol << "\",\"found\":" << (book_index ? "true" : "false");
             if (book_index) {

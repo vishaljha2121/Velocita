@@ -37,16 +37,19 @@ TapeReplica::TapeReplica(ReplicaConfig config, Send send, Applied applied)
     raft_set_prevote(server_, 1);
 
     const auto metadata = wal_.load_metadata();
-    const auto entries = wal_.recover();
     if (metadata.term > 0) raft_set_current_term(server_, metadata.term);
     if (metadata.voted_for >= 0) raft_vote_for_nodeid(server_, metadata.voted_for);
-    for (const auto& e : entries) {
-        raft_entry_t entry{};
-        entry.term = e.term;
-        entry.type = e.type;
-        entry.data.buf = const_cast<std::byte*>(e.bytes.data());
-        entry.data.len = static_cast<unsigned int>(e.bytes.size());
-        if (raft_append_entry(server_, &entry) != 0) throw StorageError("cannot restore the Raft log");
+    {
+        const auto recovered = wal_.recover();
+        for (const auto& record : recovered.records) {
+            const auto bytes = recovered.bytes(record);
+            raft_entry_t entry{};
+            entry.term = record.term;
+            entry.type = record.type;
+            entry.data.buf = const_cast<std::byte*>(bytes.data());
+            entry.data.len = static_cast<unsigned int>(bytes.size());
+            if (raft_append_entry(server_, &entry) != 0) throw StorageError("cannot restore the Raft log");
+        }
     }
     restoring_ = false;
 }

@@ -57,6 +57,10 @@ def tick(number, proposer=1, utc=0):
     return bytes([1, 4]) + struct.pack("<QBq", number, proposer, utc)
 
 
+def segment_start(previous_incarnation, previous_tick, previous_tree_size, previous_root):
+    return bytes([1, 6]) + struct.pack("<QQQ", previous_incarnation, previous_tick, previous_tree_size) + previous_root
+
+
 def head_signature(tick_number, tree_size, root, voter, signature=bytes(64)):
     return bytes([1, 5]) + struct.pack("<QQ", tick_number, tree_size) + root + bytes([voter]) + signature
 

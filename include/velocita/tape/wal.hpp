@@ -23,6 +23,20 @@ struct WalEntry {
     std::vector<std::byte> bytes;
 };
 
+struct WalRecord {
+    std::uint64_t index{};
+    std::int64_t term{};
+    std::int32_t type{};
+    std::size_t offset{};
+    std::size_t length{};
+};
+
+struct WalRecovery {
+    std::vector<std::byte> raw;
+    std::vector<WalRecord> records;
+    [[nodiscard]] std::span<const std::byte> bytes(const WalRecord& r) const { return std::span(raw).subspan(r.offset, r.length); }
+};
+
 struct Metadata {
     std::int64_t term{};
     std::int32_t voted_for{-1};
@@ -35,7 +49,7 @@ public:
     TapeWal(const TapeWal&) = delete;
     TapeWal& operator=(const TapeWal&) = delete;
 
-    [[nodiscard]] std::vector<WalEntry> recover();
+    [[nodiscard]] WalRecovery recover();
     void append(std::uint64_t index, std::int64_t term, std::int32_t type, std::span<const std::byte> bytes);
     void truncate_from(std::uint64_t index);
     void sync();

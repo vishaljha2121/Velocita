@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from tape_oracles import encode as E  # noqa: E402
-from tape_oracles.reference import ReferenceTape, APPLIED, DUPLICATE, OUT_OF_ORDER, TICK_REFUSED  # noqa: E402
+from tape_oracles.reference import ReferenceTape, APPLIED, DUPLICATE, OUT_OF_ORDER, TICK_REFUSED, SEGMENT_REFUSED, MALFORMED  # noqa: E402
 from tape_oracles import merkle as M  # noqa: E402
 
 BINARY = os.environ.get("TAPE_LOG_APPLY")
@@ -241,6 +241,13 @@ class ReducerAgainstReference(unittest.TestCase):
         entries = [E.tick(1), E.tick(1), E.tick(3), E.tick(2)]
         rows, _ = self.compare(entries)
         self.assertEqual([r["code"] for r in rows], [APPLIED, TICK_REFUSED, TICK_REFUSED, APPLIED])
+
+    def test_a_segment_records_its_predecessor_once(self):
+        root = bytes(range(32))
+        entries = [E.tick(1), E.segment_start(1794484800, 43200, 1500000, root), E.tick(2),
+                   E.segment_start(1794484800, 43200, 1500000, bytes(32)), E.segment_start(0, 0, 0, bytes(32))[:-1]]
+        rows, _ = self.compare(entries)
+        self.assertEqual([r["code"] for r in rows], [APPLIED, APPLIED, APPLIED, SEGMENT_REFUSED, MALFORMED])
 
     def test_tick_time_is_never_used(self):
         rec = Recorders()

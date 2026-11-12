@@ -1,5 +1,6 @@
 // velocita-tape-voter: one voter of the tape's Raft group.
 #include "velocita/tape/config.hpp"
+#include "velocita/tape/head_file.hpp"
 #include "velocita/tape/link.hpp"
 #include "velocita/tape/voter.hpp"
 
@@ -51,6 +52,14 @@ int main(int argc, char** argv) {
         c.boot = random_u64();
         c.signing_key = kv.get("signing_key_file");
         for (int v = 1; v <= 3; ++v) c.public_keys[v - 1] = kv.get("public_key." + std::to_string(v));
+        if (const auto previous = kv.find("previous_head_file")) {
+            const auto head = read_head_file(*previous);
+            std::array<std::optional<VerifyKey>, 3> keys;
+            for (int v = 0; v < 3; ++v) keys[v] = VerifyKey::load(c.public_keys[v]);
+            if (head.incarnation == 0 || head.incarnation == c.incarnation || valid_head_signatures(head, keys) < 2)
+                throw std::runtime_error("previous head " + *previous + " is not a signed head of an earlier segment");
+            c.previous_segment = SegmentStart{head.incarnation, head.tick, head.tree_size, head.root};
+        }
         c.tick_ms = kv.number("tick_ms", 1000);
 
         std::map<Party, Endpoint> destinations;

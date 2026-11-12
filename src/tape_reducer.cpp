@@ -782,6 +782,13 @@ ApplyResult apply_entry(TapeState& state, const Config& config, std::uint64_t in
             } else {
                 result.code = ApplyCode::tick_refused;
             }
+        } else if (const auto* g = std::get_if<SegmentStart>(&*entry)) {
+            if (state.segment_started) {
+                result.code = ApplyCode::segment_refused;
+            } else {
+                state.segment_started = true;
+                state.segment = *g;
+            }
         } else if (const auto* h = std::get_if<HeadSignature>(&*entry)) {
             result.code = ApplyCode::head_refused;
             for (auto& head : state.heads) {

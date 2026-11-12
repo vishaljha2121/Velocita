@@ -323,7 +323,7 @@ void test_wal_recovery_trims_torn_tail_and_refuses_corruption() {
     {
         TapeWal wal(dir);
         const auto entries = wal.recover();
-        check(entries.size() == 5 && entries.back().index == 5, "torn tail trimmed, five entries kept");
+        check(entries.records.size() == 5 && entries.records.back().index == 5, "torn tail trimmed, five entries kept");
     }
     {
         std::fstream f(dir / "wal.log", std::ios::binary | std::ios::in | std::ios::out);

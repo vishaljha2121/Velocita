@@ -151,6 +151,8 @@ struct Counters {
 
 struct TapeState {
     std::uint64_t applied_index{};
+    bool segment_started{};
+    SegmentStart segment;
     std::uint64_t last_tick{};
     std::uint8_t symbol_count{};
     std::array<Symbol, kMaxSymbols> symbols{};

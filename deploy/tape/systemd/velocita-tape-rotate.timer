@@ -1,0 +1,10 @@
+[Unit]
+Description=Velocita verifiable tape segment rotation at 00:00 and 12:00 UTC
+
+[Timer]
+OnCalendar=*-*-* 00,12:00:00 UTC
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

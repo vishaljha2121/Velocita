@@ -33,6 +33,7 @@ def main():
     p.add_argument("--unplug-at", type=int, default=40)
     p.add_argument("--unplug-for", type=int, default=20)
     p.add_argument("--refresh-ms", type=int, default=15 * 60 * 1000)
+    p.add_argument("--rotate-at", type=int, default=0, help="seconds into the run to end the segment and start the next")
     a = p.parse_args()
 
     if a.work.exists():
@@ -48,6 +49,9 @@ def main():
     recorder_port = {r: 47200 + r for r in (1, 2, 3)}
     tmp = Path(os.environ.get("TMPDIR", "/tmp"))
 
+    segments = []
+    previous_head = {}
+
     def voter_conf(v):
         lines = [f"node_id={v}", f"incarnation={incarnation}", f"data_dir={a.work / f'voter-{v}'}",
                  f"aeron_dir={tmp / f'aeron-tape-voter-{v}-{incarnation}'}", f"listen=127.0.0.1:{voter_port[v]}",
@@ -56,6 +60,8 @@ def main():
         lines += [f"peer.{o}=127.0.0.1:{voter_port[o]}" for o in (1, 2, 3) if o != v]
         lines += [f"recorder.{r}=127.0.0.1:{recorder_port[r]}" for r in (1, 2, 3)]
         lines += [f"public_key.{o}={keys / f'head-{o}.pub.pem'}" for o in (1, 2, 3)]
+        if v in previous_head:
+            lines.append(f"previous_head_file={previous_head[v]}")
         return write(a.work / f"voter-{v}.conf", "\n".join(lines) + "\n")
 
     def recorder_conf(r):
@@ -84,11 +90,33 @@ def main():
     for r in (1, 2, 3):
         start("recorder", r)
     began = time.time()
+    rotated = False
     unplugged = False
     timeline = []
     try:
         while time.time() - began < a.seconds:
             t = time.time() - began
+            if a.rotate_at and not rotated and t >= a.rotate_at:
+                for r in (1, 2, 3):
+                    stop("recorder", r)
+                time.sleep(a.head_every + 4)
+                for v in (1, 2, 3):
+                    stop("voter", v)
+                seg = a.work / "segments" / str(incarnation)
+                seg.mkdir(parents=True)
+                for v in (1, 2, 3):
+                    shutil.move(str(a.work / f"voter-{v}"), str(seg / f"voter-{v}"))
+                    heads = sorted((seg / f"voter-{v}" / "heads").glob("head-*.json"), key=lambda f: int(f.stem[5:]))
+                    previous_head[v] = heads[-1]
+                segments.append(incarnation)
+                incarnation += 1
+                for v in (1, 2, 3):
+                    start("voter", v)
+                time.sleep(3)
+                for r in (1, 2, 3):
+                    start("recorder", r)
+                rotated = True
+                timeline.append(("rotated", incarnation, round(time.time() - began, 1)))
             if a.unplug and not unplugged and t >= a.unplug_at:
                 stop("recorder", a.unplug)
                 stop("voter", a.unplug)
@@ -119,9 +147,30 @@ def main():
                               "commit_index": states[v]["commit_index"], "applied_index": states[v]["applied_index"],
                               "update_outcomes": states[v]["counters"]["update_outcomes"],
                               "valid_books": sum(1 for b in states[v]["books"] if b["state"] == "valid")} for v in (1, 2, 3)}}
+    links = {}
+    for s in segments:
+        seg = a.work / "segments" / str(s)
+        out = subprocess.run([tool("velocita-tape-verify"), "--wal", str(seg / "voter-1" / "wal.log"),
+                              "--heads", str(seg / "voter-1" / "heads"), "--incarnation", str(s), "--head-every", str(a.head_every),
+                              *sum([["--key", str(keys / f"head-{o}.pub.pem")] for o in (1, 2, 3)], [])],
+                             capture_output=True, text=True)
+        links[s] = {"verify_ok": json.loads(out.stdout.strip().splitlines()[-1]).get("ok") if out.stdout.strip() else False}
+    if segments:
+        prev_tick = results[1].get("previous_segment", {}).get("tick")
+        prev_file = a.work / "segments" / str(segments[-1]) / "voter-1" / "heads" / f"head-{prev_tick}.json"
+        out = subprocess.run([tool("velocita-tape-verify"), "--wal", str(a.work / "voter-1" / "wal.log"),
+                              "--incarnation", str(incarnation), "--previous-head", str(prev_file),
+                              *sum([["--key", str(keys / f"head-{o}.pub.pem")] for o in (1, 2, 3)], [])],
+                             capture_output=True, text=True)
+        last = out.stdout.strip().splitlines()[-1] if out.stdout.strip() else out.stderr.strip()[-300:]
+        links["link"] = last
+        summary["segments"] = links
+        print(json.dumps(links, indent=1))
     (a.work / "run.json").write_text(json.dumps({"incarnation": incarnation, "head_every": a.head_every}))
     print(json.dumps(summary, indent=1))
     ok = all(r.get("ok") for r in results.values())
+    if segments:
+        ok = ok and all(v.get("verify_ok") for k, v in links.items() if k != "link") and '"linked":true' in links["link"]
     print("all verified" if ok else "VERIFICATION FAILED")
     return 0 if ok else 1
 
