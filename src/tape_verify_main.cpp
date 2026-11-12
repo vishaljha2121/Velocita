@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
     std::string book_symbol;
     std::optional<std::uint64_t> until_seq;
     std::filesystem::path previous_head;
+    std::filesystem::path extract_path;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : std::string(); };
@@ -84,11 +85,12 @@ int main(int argc, char** argv) {
         else if (a == "--book") book_symbol = next();
         else if (a == "--until-seq") until_seq = std::stoull(next());
         else if (a == "--previous-head") previous_head = next();
+        else if (a == "--extract") extract_path = next();
         else {
             std::cerr << "usage: velocita-tape-verify --wal FILE [--heads DIR --key PUB1 --key PUB2 --key PUB3 --incarnation N]\n"
                          "       [--compare-wal OTHER_FILE]\n"
                          "       [--verdict-ticks N --head-every K --tick-ms T] [--book SYMBOL --until-seq N]\n"
-                         "       [--previous-head HEAD_FILE_OF_THE_PREVIOUS_SEGMENT]\n";
+                         "       [--previous-head HEAD_FILE_OF_THE_PREVIOUS_SEGMENT] [--extract ROWS.tsv]\n";
             return 64;
         }
     }
@@ -120,9 +122,59 @@ int main(int argc, char** argv) {
         std::uint64_t book_index = 0;
         Digest book_digest;
         std::string book_dump;
+        std::ofstream rows;
+        if (!extract_path.empty()) {
+            rows.open(extract_path, std::ios::trunc);
+            if (!rows) throw std::runtime_error("cannot write " + extract_path.string());
+        }
+        struct CloseSink {
+            std::ofstream* rows;
+            const TapeState* state;
+        } sink{&rows, state.get()};
+        const auto on_close = [](void* ctx, const VerdictClose& v) {
+            auto& s = *static_cast<CloseSink*>(ctx);
+            if (!s.rows->is_open()) return;
+            *s.rows << "C\t" << v.close_index << '\t' << s.state->symbols[stream_symbol(v.stream)].view() << '\t'
+                    << to_string(stream_channel(v.stream)) << '\t' << to_string(v.kind) << '\t' << v.seqnum << '\t'
+                    << to_string(v.outcome) << '\t' << to_string(v.reason) << '\t' << int(v.distinct);
+            for (const auto& c : v.copies) *s.rows << '\t' << (c.present ? c.utc_recv_ns : 0);
+            *s.rows << '\n';
+        };
         for (const auto& e : entries) {
             if (e.index != leaves.size() + 1) fail("index sequence", e.index, std::to_string(leaves.size() + 1), std::to_string(e.index));
-            const auto result = apply_entry(*state, config, e.index, e.bytes);
+            const auto result = apply_entry(*state, config, e.index, e.bytes, on_close, &sink);
+            if (rows.is_open() && result.decoded) {
+                const auto decoded = decode_entry(e.bytes);
+                if (const auto* o = decoded ? std::get_if<Observation>(&*decoded) : nullptr) {
+                    rows << "O\t" << e.index << '\t' << int(o->header.recorder) << '\t' << to_string(o->channel) << '\t'
+                         << to_string(o->kind) << '\t' << o->symbol.view() << '\t' << (o->has_seqnum ? std::to_string(o->seqnum) : "-")
+                         << '\t' << o->utc_recv_ns << '\t' << o->clock_error_us << '\t' << int(result.code) << '\t'
+                         << result.flags << '\n';
+                } else if (const auto* pt = decoded ? std::get_if<ObservationPart>(&*decoded) : nullptr) {
+                    rows << "P\t" << e.index << '\t' << int(pt->header.recorder) << '\t' << int(result.code) << '\t'
+                         << result.flags << '\n';
+                } else if (const auto* ev = decoded ? std::get_if<RecorderEvent>(&*decoded) : nullptr) {
+                    rows << "E\t" << e.index << '\t' << int(ev->header.recorder) << '\t' << to_string(ev->kind) << '\t'
+                         << to_string(ev->channel) << '\t' << ev->symbol.view() << '\t' << ev->expected << '\t' << ev->received
+                         << '\t' << ev->utc_ns << '\n';
+                } else if (const auto* tk = decoded ? std::get_if<Tick>(&*decoded) : nullptr) {
+                    if (result.code == ApplyCode::applied)
+                        rows << "T\t" << e.index << '\t' << tk->number << '\t' << tk->proposer_utc_ns << '\n';
+                }
+                if (result.stream != 0xFF && stream_channel(result.stream) == Channel::depth) {
+                    const auto sym = stream_symbol(result.stream);
+                    const auto& b = state->books[sym];
+                    std::int64_t utc = 0;
+                    if (const auto* o = decoded ? std::get_if<Observation>(&*decoded) : nullptr) utc = o->utc_recv_ns;
+                    rows << "B\t" << e.index << '\t' << state->symbols[sym].view() << '\t' << to_string(b.state) << '\t';
+                    if (b.bids.size) rows << b.bids.levels[0].price << '\t' << b.bids.levels[0].qty;
+                    else rows << "-\t-";
+                    rows << '\t';
+                    if (b.asks.size) rows << b.asks.levels[0].price << '\t' << b.asks.levels[0].qty;
+                    else rows << "-\t-";
+                    rows << '\t' << utc << '\n';
+                }
+            }
             leaves.push_back(result.leaf_hash);
             if (state->frontier.size != leaves.size()) fail("tree size", e.index, std::to_string(leaves.size()), std::to_string(state->frontier.size));
             if (wanted.contains(leaves.size())) roots_at[leaves.size()] = state->frontier.root();
