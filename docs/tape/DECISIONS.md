@@ -498,3 +498,8 @@ along with 45 signed heads. Live memory: each voter has a base of about 610 MB a
 MB of log, so a full segment at the busiest rate seen (30 KB/s, about 430 MB) ends near 1.35 GB on the Pi,
 and a replay near the end peaks around 1.6 GB, both under its 2 GB limit. Next rotation runs from the
 timer at 20:00 UTC. Further memory work is out of scope for the MVP.
+
+**D-60. First findings are written up.** `docs/tape/FINDINGS-2026-11-12.md` records what one hour of the tape
+showed: 98.4% of updates identical at all three vantage points and none divergent, a 35 ms median arrival
+spread, per-book activity, clean book reconstruction, and the 19:14 incident (a non-tape burst on NUC1,
+likely the dashboard being opened, amplified by Aeron retransmissions and stopped by the watchdog).
