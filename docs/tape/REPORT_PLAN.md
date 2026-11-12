@@ -1,6 +1,6 @@
 # Feed-Quality Report Plan
 
-Status: proposed, awaiting owner approval. Nothing is coded yet. Implementation time box: 2 hours.
+Status: approved 2026-11-12 and built (commit 339b1e4). All test cases map to `tests/test_tape_report.py` (ctest `tape-report-tests`).
 
 ## 1. What gets built
 
@@ -63,24 +63,24 @@ code under test. The last column is filled in after the build.
 
 | Case | Guarantee | Test | Expected | Test name (after build) |
 |---|---|---|---|---|
-| RPT-1.1 | RPT-1 | A segment whose log has one flipped byte | Excluded, reason "verify failed"; other segments still reported | |
-| RPT-1.2 | RPT-1 | A segment whose `segment_start` names a head that is not the previous segment's | Excluded, reason "link" | |
-| RPT-1.3 | RPT-1 | A segment with no signed head | Excluded, reason "no signed head" | |
-| RPT-2.1 | RPT-2 | A scripted log from three recorders (agreements, a late copy, a divergence, a gap) | Verdict counts equal the Python reference's on the same entries | |
-| RPT-3.1 | RPT-3 | Same log | Per book and total, the four outcomes sum to the closed update verdicts | |
-| RPT-4.1 | RPT-4 | Run the report twice on the same segments | `summary.json` byte-identical | |
-| RPT-4.2 | RPT-4 | Two linked segments | Each listed with incarnation, last head tick, tree size and root, as the verifier prints them | |
-| RPT-5.1 | RPT-5 | One update received at 100, 130 and 160 ms; another seen by one recorder only | Spread 60 ms from the first; the second not counted | |
-| RPT-5.2 | RPT-5 | Clock errors 2 ms, 5 ms, unknown | Bound shown as 5 ms with "unknown on some hosts" | |
-| RPT-5.3 | RPT-5 | Updates of one book first received at 0, 1.0, 2.1, 35 s | Gaps 1.0, 1.1, 32.9 s; one silence over 30 s | |
-| RPT-6.1 | RPT-6 | Two segments with a 10-minute gap between them | Covered time excludes the gap; the gap is listed; rates use covered time | |
-| RPT-7.1 | RPT-7 | Payloads carrying a unique marker string | Marker appears in neither output | |
-| RPT-8.1 | RPT-8 | Hash every archive file before and after a run | Unchanged | |
-| RPT-8.2 | RPT-8 | Run over one segment, then over three copies of it | Peak memory about the same | |
-| RPT-M.1 | Consistency | Scripted crossed book and a trade outside the book | Counted once each, under the right book | |
-| RPT-M.2 | Book shape | Book with bid 100.00 × 2 and ask 100.10 × 3 for 10 s, then ask 100.20 for 10 s | Spreads 9.995 bp then 19.980 bp (spread ÷ mid); time-weighted mean 14.99 bp; top bid size 2 | |
-| RPT-M.3 | Book shape | Observations at 14:00 and 15:00 UTC on a weekday | Split into off-hours and US market hours (14:30 to 21:00 UTC) | |
-| RPT-I.1 | All | Local three-voter run on the live feed with one rotation | Both segments used, link verified, sections populated, counts reconcile | |
+| RPT-1.1 | RPT-1 | A segment whose log has one flipped byte | Excluded, reason "verify failed"; other segments still reported || `test_a_damaged_log_is_excluded_and_others_still_count` |
+| RPT-1.2 | RPT-1 | A segment whose `segment_start` names a head that is not the previous segment's | Excluded, reason "link" || `test_link_to_the_wrong_head_excludes_the_segment` |
+| RPT-1.3 | RPT-1 | A segment with no signed head | Excluded, reason "no signed head" || `test_a_segment_without_a_signed_head_is_excluded`, `test_a_head_with_one_signature_is_not_enough` |
+| RPT-2.1 | RPT-2 | A scripted log from three recorders (agreements, a late copy, a divergence, a gap) | Verdict counts equal the Python reference's on the same entries || `test_counts_are_the_verdicts_and_reconcile`, `test_divergent_copies_are_counted` (scenario counts; the reducer is the voters' own, and reducer-to-reference agreement is covered by `tape-core-tests`) |
+| RPT-3.1 | RPT-3 | Same log | Per book and total, the four outcomes sum to the closed update verdicts || `test_counts_are_the_verdicts_and_reconcile` |
+| RPT-4.1 | RPT-4 | Run the report twice on the same segments | `summary.json` byte-identical || `test_the_summary_is_reproducible_and_cites_each_head` |
+| RPT-4.2 | RPT-4 | Two linked segments | Each listed with incarnation, last head tick, tree size and root, as the verifier prints them || `test_the_summary_is_reproducible_and_cites_each_head` |
+| RPT-5.1 | RPT-5 | One update received at 100, 130 and 160 ms; another seen by one recorder only | Spread 60 ms from the first; the second not counted || `test_spread_uses_only_updates_seen_twice` |
+| RPT-5.2 | RPT-5 | Clock errors 2 ms, 5 ms, unknown | Bound shown as 5 ms with "unknown on some hosts" || `test_clock_bound_and_unknown_hosts` |
+| RPT-5.3 | RPT-5 | Updates of one book first received at 0, 1.0, 2.1, 35 s | Gaps 1.0, 1.1, 32.9 s; one silence over 30 s || `test_cadence_and_silences` |
+| RPT-6.1 | RPT-6 | Two segments with a 10-minute gap between them | Covered time excludes the gap; the gap is listed; rates use covered time || `test_gap_between_segments_is_not_counted_as_recorded` |
+| RPT-7.1 | RPT-7 | Payloads carrying a unique marker string | Marker appears in neither output || `test_no_payload_bytes_leave_the_report` |
+| RPT-8.1 | RPT-8 | Hash every archive file before and after a run | Unchanged || `test_the_archive_is_not_modified` |
+| RPT-8.2 | RPT-8 | Run over one segment, then over three copies of it | Peak memory about the same || `test_memory_does_not_grow_with_segments` (four segments against one, peak under 1.3 times) |
+| RPT-M.1 | Consistency | Scripted crossed book and a trade outside the book | Counted once each, under the right book || `test_inconsistent_books_are_flagged` |
+| RPT-M.2 | Book shape | Book with bid 100.00 × 2 and ask 100.10 × 3 for 10 s, then ask 100.20 for 10 s | Spreads 9.995 bp then 19.980 bp (spread ÷ mid); time-weighted mean 14.99 bp; top bid size 2 || `test_spread_is_time_weighted_and_split_by_market_hours` |
+| RPT-M.3 | Book shape | Observations at 14:00 and 15:00 UTC on a weekday | Split into off-hours and US market hours (14:30 to 21:00 UTC) || `test_spread_is_time_weighted_and_split_by_market_hours` (15:00 UTC weekday counted as market hours) |
+| RPT-I.1 | All | Local three-voter run on the live feed with one rotation | Both segments used, link verified, sections populated, counts reconcile || Run by hand on NUC2 against the real archive (see section 7) |
 
 ## 4. Diagrams
 

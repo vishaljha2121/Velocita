@@ -503,3 +503,14 @@ timer at 20:00 UTC. Further memory work is out of scope for the MVP.
 showed: 98.4% of updates identical at all three vantage points and none divergent, a 35 ms median arrival
 spread, per-book activity, clean book reconstruction, and the 19:14 incident (a non-tape burst on NUC1,
 likely the dashboard being opened, amplified by Aeron retransmissions and stopped by the watchdog).
+
+**D-61. The feed-quality report is built; NUC2 failed before its first real run.** `velocita-tape-verify
+--extract` and `tools/tape-report.py` are built and pass 16 tests on scripted, signed segments (ctest
+`tape-report-tests`, 14 of 14 tape suites); a local two-segment run produced plausible numbers (DEPTH cadence
+median exactly 1,000 ms, matching the documented batching). The first real run was to happen on NUC2, which holds
+the whole archive. At about 19:51 UTC NUC2 dropped off Tailscale while still answering ping on the LAN; over the
+LAN, ordinary programs failed with "Input/output error" (load average 11), and then sshd stopped accepting
+connections. That points to a disk or root-filesystem fault and needs physical attention. Around the same time the
+watchdogs on NUC1 and the Pi tripped again (1.2 to 1.8 MB/s), so the tape is in a 20-minute cool-down. The
+archive's only complete copy is on NUC2; NUC1 and the Pi keep their newest two segments. `docs/tape/TEST_MAP.md`
+maps all 92 ADR test cases to tests: 49 covered, 22 partly, 21 not covered.
