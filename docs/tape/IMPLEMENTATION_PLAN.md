@@ -126,4 +126,4 @@ client), exporter, offline verifier, key tool. Results:
 Cut line used: the replica is new and compact (D-05), compaction is deferred (D-07, which also defers
 RAFT-5.1's snapshot half), and hardware is a release bundle plus owner commands (D-33), because NUC1's disk
 is full and the Pi is under the build floor. Amendment 2 to ADR 0030 (verdict keys, D-13/D-25/D-26) is
-implemented and awaits owner approval. Next: `RUNBOOK.md` steps 0 to 3.
+implemented and was approved by the owner on 2026-11-11. Next: `RUNBOOK.md` steps 0 to 3.

@@ -255,13 +255,13 @@ gaps. A restart starts a new session at number 1; a session that ends without a 
 the observations it had not yet submitted." Test ING-3.1 gains a case that kills the recorder mid-run
 and checks contiguity within each session.
 
-**Amendment 2 (proposed 2026-11-11, not yet approved): a verdict's key includes the update kind.** The live
+**Amendment 2: a verdict's key includes the update kind, and every snapshot is its own verdict. Approved by the owner 2026-11-11 and applied to GUARANTEES.md.** The live
 feed gives a snapshot the same `seqnum` as the update that follows it, so a key of (stream, `seqnum`) would
 compare a snapshot with an update and report false divergence. Proposed wording for ATT-1: "Every (stream,
 update kind, `seqnum`) reported by any recorder gets exactly one final verdict". Implemented in the reducer
 because the current wording cannot be implemented correctly; see `docs/tape/DECISIONS.md` D-13.
 Extended the same day after the first live run (D-25): a snapshot is a reply to one recorder's subscription,
-so a snapshot's verdict key also includes the recorder. Proposed wording, revised after the unplug drill (D-26): "Every
+so a snapshot's verdict key also includes the recorder. Approved wording, revised after the unplug drill (D-26): "Every
 (stream, `seqnum`) UPDATE reported by any recorder gets exactly one final verdict across recorders; every
 snapshot message, being one subscription's reply, gets a verdict of its own." Updates are still compared
 across all three recorders.

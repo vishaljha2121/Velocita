@@ -254,3 +254,45 @@ the toolchain has no `websockets` module (they run on the Mac). The runtime imag
 libraries, writes keys 0600, and its recorder, run read-only in sink mode against the live public feed for
 10 s, received 155 frames with none lost over verified TLS. The x86_64 build on NUC2 and NUC1 is still
 unproven until step 1 of the runbook.
+
+## Deployment (owner approved hosts, ceremony and deploy, 2026-11-11)
+
+**D-36. NUC1's disk is freed through its own archive lifecycle, not by deleting data.** NUC1 filled on
+Nov 5: the market-data recorder had grown `stream.db` to 49 GB, the Mac's nightly pull had been failing
+since Nov 6 (ssh timeouts), so no day after Oct 28 was acknowledged and the nightly archive job could not
+prune; once the disk was full it could not even start its container, and the recorder crash-looped. The
+only file deleted is the Oct 28 archive (999 MB), which was acknowledged, past the 7-day archive retention
+the job enforces, and whose Mac copy was re-hashed and matched NUC1's sidecar. Then `md-backup-pull` was run
+by hand (to the IP) so the Mac fetches, verifies and acknowledges Oct 29 to Nov 3; the nightly job then
+prunes and removes acknowledged archives as designed. No row of `stream.db` was touched by hand.
+
+**D-37. The Pi's image is built on the Mac from the Pi's own toolchain image; NUC1 gets NUC2's image.**
+Deleting old Pi images would free about 100 MB because they share layers, and a native Pi build needs a
+4 GB floor it does not have. Instead the Pi's recorded `velocita-dev:current` was streamed into Docker on
+the Mac (its MANIFEST hashes identically on both sides; Docker reports a different ID for the same image),
+the arm64 tape image was built there with `TOOLCHAIN_ID` set to the recorded Pi ID, and loaded onto the Pi.
+NUC2 built the x86_64 image natively, bounded (CPU 7, build slice, 1 h), 10 of 10 tests in the builder, and
+that image was copied to NUC1, so no build ran beside NUC1's full disk or the Pi's small one.
+
+**D-38. Binary streams use `/usr/bin/ssh`.** The interactive shell wraps `ssh` in a function that writes
+terminal colour codes into stdout, which corrupted the first image stream. The tape scripts run under
+`sh` and never see the function.
+
+**D-39. Prometheus on NUC1 is left untouched for now.** Its config is a file inside `~/live-aae119b9`, the
+trading live run's directory, so adding the tape scrape job would edit trading evidence. The tape's
+exporters already serve `/metrics` on port 45301 on every host; a Grafana board can follow from a copy of
+that config once the owner says where tape monitoring should live.
+
+**D-40. A published head gains signatures as they land.** Live, the Pi's signature reached the log with the
+matching root on every head, but always third, and the voter wrote a head's file once, at the second
+signature, so no published head ever showed the Pi. A head's file is now rewritten whenever its count of
+valid signatures grows, so it only ever gains signatures; any earlier copy stays valid. Covered by a new
+voter test and mutant `head-never-gains-signatures`.
+
+**D-41. The tape went live on 2026-11-12 00:07 UTC, incarnation 68934737119228, image b783f6a.** First minute
+on the three hosts: one leader (voter 1, term 1), 12 of 12 books valid on every voter, 968 updates agreed 3
+of 3, none divergent (the 6 seen by one recorder only are the seconds before recorders 2 and 3 started),
+identical signed heads at ticks 60, 120 and 180, and an offline verify of NUC2's log from the Mac using the
+public keys alone. Head-key fingerprints: voter 1 d8486f20c11a37ec2de1fc94ebef6c7e8a0f15533b6a7a9751cf654d8b0b1807,
+voter 2 7b886f91f0a3faf7518a50fe997f48c4ed12432a8762a98c14ba2d51bdf60d45, voter 3
+5fb8b28617327d21903d272c3c28b56a75f8d840b5359412f1fcb104ca2780f6.

@@ -170,12 +170,11 @@ void Voter::on_applied(std::uint64_t, std::span<const std::byte>, const ApplyRes
     if (result.head_recorded && signing_) heads_to_sign_.push_back(replica_->state().last_tick);
     if (result.decoded && result.type == EntryType::head_signature && result.code == ApplyCode::applied) {
         for (const auto& head : replica_->state().heads)
-            if (head.used && !published_ticks_.contains(head.tick)) heads_to_check_.push_back(head.tick);
+            if (head.used) heads_to_check_.push_back(head.tick);
     }
 }
 
 void Voter::publish_head(std::uint64_t tick) {
-    if (published_ticks_.contains(tick)) return;
     const auto* head = find_head(replica_->state(), tick);
     if (!head) return;
     const auto message = head_message(config_.incarnation, head->tick, head->tree_size, head->root);
@@ -188,7 +187,8 @@ void Voter::publish_head(std::uint64_t tick) {
             ++valid;
         }
     }
-    if (valid < 2) return;
+    const auto already = published_ticks_.find(tick);
+    if (valid < 2 || (already != published_ticks_.end() && valid <= already->second)) return;
     std::ostringstream json;
     json << "{\"incarnation\":" << config_.incarnation << ",\"tick\":" << head->tick << ",\"tree_size\":"
          << head->tree_size << ",\"root\":\"" << v2::to_hex(head->root) << "\",\"signatures\":{";
@@ -210,8 +210,14 @@ void Voter::publish_head(std::uint64_t tick) {
     }
     json << "}}\n";
     atomic_write(config_.replica.data_dir / "heads" / ("head-" + std::to_string(head->tick) + ".json"), json.str());
-    published_ticks_.insert(tick);
-    published_.push_back(record);
+    if (already == published_ticks_.end()) {
+        published_ticks_.emplace(tick, valid);
+        published_.push_back(record);
+        return;
+    }
+    already->second = valid;
+    for (auto& r : published_)
+        if (r.tick == tick) r = record;
 }
 
 void Voter::after_apply() {

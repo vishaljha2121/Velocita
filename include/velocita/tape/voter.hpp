@@ -76,7 +76,7 @@ private:
     std::map<std::pair<std::uint64_t, std::uint8_t>, std::vector<std::byte>> pending_heads_;
     std::vector<std::uint64_t> heads_to_sign_;
     std::vector<std::uint64_t> heads_to_check_;
-    std::set<std::uint64_t> published_ticks_;
+    std::map<std::uint64_t, std::size_t> published_ticks_;
     std::vector<HeadRecord> published_;
     std::uint64_t last_tick_ms_{};
     std::uint64_t last_ack_ms_{};

@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
+#include <iterator>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -198,6 +200,18 @@ void test_ordering_acks_ticks_and_heads() {
         check(sigs >= 2, "a published head carries at least two valid signatures");
     }
     h.run(1000);
+    for (std::size_t i = 0; i < h.voters.size(); ++i) {
+        const auto& heads = h.voters[i]->published_heads();
+        if (heads.empty()) continue;
+        const auto& head = heads.front();
+        std::size_t sigs = 0;
+        for (const auto b : head.signed_by) sigs += b ? 1 : 0;
+        std::ifstream in(h.root / ("voter-" + std::to_string(i + 1)) / "heads" / ("head-" + std::to_string(head.tick) + ".json"));
+        const std::string text((std::istreambuf_iterator<char>(in)), {});
+        const bool file_has_all = text.find("\"1\":\"") != std::string::npos && text.find("\"2\":\"") != std::string::npos &&
+                                  text.find("\"3\":\"") != std::string::npos;
+        check(sigs == 3 && file_has_all, "a published head gains the third signature once it lands");
+    }
     const auto st = h.voters[0]->replica().status();
     bool same = true;
     for (auto& v : h.voters) {
