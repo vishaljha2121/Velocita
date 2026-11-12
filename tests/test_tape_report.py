@@ -295,6 +295,24 @@ class ReportTests(unittest.TestCase):
         seg = report(self.base, self.keys, self.tmp / "out")["segments"]
         self.assertEqual(seg[0]["status"], "excluded")
 
+    def test_updates_and_recording_are_broken_down_by_hour(self):
+        boundary = 1_794_517_200 * SEC
+        sc = Script(t0=boundary - 3 * SEC)
+        sc.snapshot(10, 0, [("100.00", "2", "1")], [("100.10", "3", "1")])
+        sc.depth((1, 2, 3), "UPDATE", 10, [SEC] * 3, bids=[("100.01", "1", "1")])
+        sc.tick(SEC + 500 * MS)
+        sc.depth((1, 2), "UPDATE", 11, [2 * SEC] * 2, bids=[("100.02", "1", "1")])
+        sc.tick(2 * SEC + 500 * MS, count=8)
+        sc.depth((1, 2, 3), "UPDATE", 12, [11 * SEC, 11 * SEC + 40 * MS, 11 * SEC + 80 * MS], bids=[("100.03", "1", "1")])
+        sc.tick(11 * SEC + 500 * MS, count=2)
+        write_segment(self.base, 1000, sc.entries, self.keys)
+        periods = {p["hour_utc"]: p for p in report(self.base, self.keys, self.tmp / "out")["periods"]}
+        before, after = periods["2026-11-12T20:00:00Z"], periods["2026-11-12T21:00:00Z"]
+        self.assertEqual((before["updates"]["3/3"], before["updates"]["2/3"]), (1, 1))
+        self.assertEqual((after["updates"]["3/3"], after["updates"]["closed"]), (1, 1))
+        self.assertEqual(after["arrival_spread_ms"]["p50"], 80)
+        self.assertAlmostEqual(before["recorded_minutes"] + after["recorded_minutes"], 10 / 60, places=1)
+
     def test_the_summary_is_reproducible_and_cites_each_head(self):
         a = write_segment(self.base, 1000, basic_script().entries, self.keys)
         first = (report(self.base, self.keys, self.tmp / "out1"), (self.tmp / "out1/summary.json").read_bytes())

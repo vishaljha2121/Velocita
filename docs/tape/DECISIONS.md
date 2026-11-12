@@ -531,3 +531,11 @@ heartbeats; market-hours spreads of 0.03 to 4.4 bp with top-of-book sizes of 0.0
 8 to 17 bp off-hours, and the rebuilt tops agree with the exchange's own best bid and offer (at most 5
 mismatches per book). The 1-of-3 count (18,800) is concentrated in the morning's instability (the Pi's crash
 loop and the pre-fix refresh race); a per-period breakdown would show it.
+
+**D-63. The report breaks results down by hour, and the first findings are written up.** `summary.json` and the
+page gain an hourly table (recorded minutes, verdict split, arrival spread), bucketed by each update's first
+arrival; `test_updates_and_recording_are_broken_down_by_hour` covers it (19 report tests). On the real archive
+every clean hour is 98.7 to 100% identical at all three recorders; each shortfall lines up with a known incident.
+`FINDINGS-2026-11-12-report.md` records this, the book-shape result, and a hand analysis of the 23 trades flagged
+outside the book (7 overnight before the recorder fix, likely our stale book; 16 later, mostly one to three price
+ticks, consistent with TRADE and DEPTH being batched separately), with open questions for True Markets.

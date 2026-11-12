@@ -70,6 +70,7 @@ class Report:
         self.coverage_gaps = []
         self.prev_tick_utc = None
         self.outages = []
+        self.periods = defaultdict(lambda: {"outcomes": Counter(), "spread_ms": Counter(), "recorded": 0.0})
 
     def fold(self, rows_path):
         last_tick_utc = self.prev_tick_utc
@@ -85,6 +86,7 @@ class Report:
                     delta = (utc - last_tick_utc) / 1e9
                     if 0 < delta <= GAP_SECONDS:
                         self.covered_seconds += delta
+                        self.periods[utc // 3_600_000_000_000]["recorded"] += delta
                     elif delta > GAP_SECONDS:
                         self.coverage_gaps.append({"from_utc": iso(last_tick_utc), "seconds": round(delta, 1)})
                         self.outages.append((last_tick_utc, utc))
@@ -115,8 +117,13 @@ class Report:
                     book = self.books[symbol]
                     book.outcomes[outcome] += 1
                     times = [int(x) for x in r[9:12] if int(x) != 0]
+                    period = self.periods[min(times) // 3_600_000_000_000] if times else None
+                    if period is not None:
+                        period["outcomes"][outcome] += 1
                     if len(times) >= 2:
                         self.spread_ms[(max(times) - min(times)) // 1_000_000] += 1
+                        if period is not None:
+                            period["spread_ms"][(max(times) - min(times)) // 1_000_000] += 1
                     if channel == "DEPTH" and times:
                         first = min(times)
                         spans_outage = book.last_first_arrival is not None and any(
@@ -175,6 +182,14 @@ class Report:
             }
         closed = sum(totals.values())
         used = [s for s in self.segments if s["status"] == "used"]
+        periods = []
+        for hour in sorted(self.periods):
+            p = self.periods[hour]
+            n = sum(p["outcomes"].values())
+            periods.append({"hour_utc": iso(hour * 3_600_000_000_000), "recorded_minutes": round(p["recorded"] / 60, 1),
+                            "updates": {o: p["outcomes"].get(o, 0) for o in OUTCOMES} | {"closed": n},
+                            "share_3_of_3": round(p["outcomes"].get("3/3", 0) / n, 4) if n else None,
+                            "arrival_spread_ms": {"p50": percentile(p["spread_ms"], 0.5), "p99": percentile(p["spread_ms"], 0.99)}})
         return {
             "coverage": {"segments_used": len(used), "segments_excluded": len(self.segments) - len(used),
                          "recorded_hours": round(self.covered_seconds / 3600, 3), "gaps": self.coverage_gaps},
@@ -186,6 +201,7 @@ class Report:
                            "clock_error_bound_ms": round(max(self.clock_errors) / 1000, 3) if self.clock_errors else None,
                            "clock_error_unknown_on_some_hosts": self.clock_unknown},
             "books": books,
+            "periods": periods,
             "segments": self.segments,
         }
 
@@ -301,6 +317,13 @@ def render(summary, keys_hint):
     rows_shape = "".join(
         f"<tr><th>{e(sym)}</th><td>{cell(b['spread_bp']['market_hours']['mean'])}</td><td>{cell(b['spread_bp']['off_hours']['mean'])}</td>"
         f"<td>{cell(b['top_size']['bid_median'])}</td><td>{cell(b['top_size']['ask_median'])}</td></tr>" for sym, b in summary["books"].items())
+    def pct(v):
+        return "–" if v is None else f"{v * 100:.1f}%"
+    rows_periods = "".join(
+        f"<tr><th>{e(p['hour_utc'][:13].replace('T', ' '))}:00</th><td>{p['recorded_minutes']}</td><td>{p['updates']['closed']}</td>"
+        f"<td>{pct(p['share_3_of_3'])}</td><td>{p['updates']['2/3']}</td>"
+        f"<td>{p['updates']['1/3']}</td><td>{p['updates']['divergent']}</td><td>{cell(p['arrival_spread_ms']['p50'])}</td>"
+        f"<td>{cell(p['arrival_spread_ms']['p99'])}</td></tr>" for p in summary["periods"])
     rows_segments = "".join(
         f"<tr><td>{s['incarnation']}</td><td>{e(s['status'])}</td><td>{cell(s.get('reason'))}</td><td>{cell(s.get('first_tick_utc'))}</td>"
         f"<td>{cell(s.get('last_tick_utc'))}</td><td>{cell(s.get('last_head_tick'))}</td><td>{cell(s.get('tree_size'))}</td>"
@@ -340,6 +363,8 @@ th:first-child, td:first-child {{ text-align: left; }} thead th {{ color: var(--
 </div></section>
 <section><h2>Completeness</h2><p>Every update gets one verdict: how many recorders received identical bytes before it closed. Closed {c['closed']}: 3 of 3 {c['3/3']}, 2 of 3 {c['2/3']}, 1 of 3 {c['1/3']}, divergent {c['divergent']}.</p>
 <div class="wrap"><table><thead><tr><th>Book</th><th>Updates</th><th>3 of 3</th><th>2 of 3</th><th>1 of 3</th><th>Divergent</th><th>Gaps</th><th>Resubscribes</th></tr></thead><tbody>{rows_books}</tbody></table></div></section>
+<section><h2>By hour (UTC)</h2><p>Updates grouped by the hour of their first arrival, with the minutes the tape was actually recording in that hour.</p>
+<div class="wrap"><table><thead><tr><th>Hour</th><th>Recorded min</th><th>Updates</th><th>3 of 3</th><th>2 of 3</th><th>1 of 3</th><th>Divergent</th><th>Spread p50 ms</th><th>Spread p99 ms</th></tr></thead><tbody>{rows_periods}</tbody></table></div></section>
 <section><h2>Consistency</h2><p>Integrity checks on the rebuilt books, counted per observation.</p>
 <div class="wrap"><table><thead><tr><th>Book</th><th>Crossed</th><th>Locked</th><th>Trade outside book</th><th>Snapshot differs</th><th>Stale snapshot</th></tr></thead><tbody>{rows_consistency}</tbody></table></div></section>
 <section><h2>Timeliness and liveness</h2><p>Time between consecutive DEPTH updates by first arrival (ms). The feed documents about 1 s batching for no-login subscribers and a 30 s silence rule for dead connections. Arrival spread p50 {cell(t['arrival_spread_ms']['p50'])} ms, p90 {cell(t['arrival_spread_ms']['p90'])} ms, p99 {cell(t['arrival_spread_ms']['p99'])} ms, max {cell(t['arrival_spread_ms']['max'])} ms over {t['arrival_spread_ms']['updates']} updates seen by at least two recorders; clock error bound {e(bound_text)}.</p>
