@@ -1,8 +1,8 @@
 [Unit]
-Description=Velocita verifiable tape segment rotation at 00:00 and 12:00 UTC
+Description=Velocita verifiable tape segment rotation every 4 hours (00, 04, 08, 12, 16, 20 UTC)
 
 [Timer]
-OnCalendar=*-*-* 00,12:00:00 UTC
+OnCalendar=*-*-* 00/4:00:00 UTC
 AccuracySec=1s
 Persistent=true
 

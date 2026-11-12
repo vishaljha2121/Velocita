@@ -3,7 +3,7 @@
 # interval boundary; the new incarnation is the boundary's Unix time, so all three agree without talking.
 # The new segment's first entry records the previous segment's last signed head (D-55).
 set -eu
-interval=${TAPE_ROTATE_INTERVAL:-43200}
+interval=${TAPE_ROTATE_INTERVAL:-14400}
 keep=${TAPE_ROTATE_KEEP:-2}
 head_wait=${TAPE_ROTATE_HEAD_WAIT:-75}
 base=${TAPE_HOME:-$HOME/velocita-tape}

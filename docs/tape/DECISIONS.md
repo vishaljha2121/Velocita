@@ -453,8 +453,8 @@ out-of-memory restarts and floods could not keep hitting the shared Wi-Fi. Logs,
 fixes: a bounded log (rotating the incarnation on a schedule, or real compaction) and Aeron frames that
 fit the tunnel.
 
-**D-55. The tape is a chain of 12-hour segments (owner decision, 2026-11-12).** At 00:00 and 12:00 UTC
-every host's `velocita-tape-rotate.timer` runs `rotate.sh`: stop the recorder, wait 75 s so a final signed
+**D-55. The tape is a chain of segments (owner decision, 2026-11-12; 4 hours each, D-58).** At every
+boundary every host's `velocita-tape-rotate.timer` runs `rotate.sh`: stop the recorder, wait 75 s so a final signed
 head covers every recorded observation, stop the voter, move the segment to `data/segments/<incarnation>`,
 and start the next segment. The new incarnation is the boundary's Unix time, so the three hosts agree
 without talking to each other. A new entry type, `segment_start`, carries the previous segment's last
@@ -480,3 +480,13 @@ log when it was killed (D-54). It now reads the file once, refers to entries by 
 end in the same pass, and frees the buffer once Raft has its copies, so the peak is about twice the log
 and steady state about once. (`podman stats` also counts the log's page cache, which the kernel can
 reclaim.)
+
+**D-58. Segments are 4 hours, not 12 (owner decision after measurement).** Replaying NUC2's real 419 MB log
+in an isolated voter: the old image peaked at 1,556 MB and held 1,521 MB afterwards; the new one (D-57)
+peaked at 1,565 MB and held 1,118 MB. So D-57 cut what a voter keeps by about 400 MB but not the peak; the
+real cost is about 1.45 KB of memory per entry for an average 545-byte entry (about 2.7 times the log, 3.7
+times while replaying). A 12-hour segment (about 1.3 GB of log at 30 KB/s) would need about 3.5 GB held
+and 4.8 GB to replay, more than the Pi or NUC1 can give. Four-hour segments (about 430 MB) need about
+1.2 GB held and 1.6 GB at a replay peak, inside the per-host limits (3 GB on the NUCs, 2 GB on the Pi).
+The timer runs at 00, 04, 08, 12, 16 and 20 UTC. Moving to longer segments needs the per-entry memory cut
+first (keep payloads on disk and read them back only for a lagging follower).
