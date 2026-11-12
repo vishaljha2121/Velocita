@@ -490,3 +490,11 @@ and 4.8 GB to replay, more than the Pi or NUC1 can give. Four-hour segments (abo
 1.2 GB held and 1.6 GB at a replay peak, inside the per-host limits (3 GB on the NUCs, 2 GB on the Pi).
 The timer runs at 00, 04, 08, 12, 16 and 20 UTC. Moving to longer segments needs the per-entry memory cut
 first (keep payloads on disk and read them back only for a lagging follower).
+
+**D-59. The 4-hour segments run, and they fit.** First rotation on 2026-11-12 at 16:00 UTC moved the stopped
+tape's log (417 MB, 52 MB gzipped) into `segments/68934737119228` on every host and started segment
+1794499200; its first entry links to head 44460 of the old segment, which the verifier confirms in place
+along with 45 signed heads. Live memory: each voter has a base of about 610 MB and grows 1.2 to 1.6 MB per
+MB of log, so a full segment at the busiest rate seen (30 KB/s, about 430 MB) ends near 1.35 GB on the Pi,
+and a replay near the end peaks around 1.6 GB, both under its 2 GB limit. Next rotation runs from the
+timer at 20:00 UTC. Further memory work is out of scope for the MVP.
