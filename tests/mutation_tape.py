@@ -19,6 +19,8 @@ REPLICA = CORE + ["src/tape_wal.cpp", "src/tape_replica.cpp"]
 VOTER = REPLICA + ["src/tape_auth.cpp", "src/tape_config.cpp", "src/tape_signing.cpp", "src/tape_peer_codec.cpp",
                    "src/tape_voter.cpp"]
 
+RECORDER = CORE + ["src/tape_websocket.cpp", "src/tape_recorder.cpp"]
+
 R = "src/tape_reducer.cpp"
 MUTANTS = [
     ("close-one-tick-late", R, "s.last_tick >= v.first_tick + c.config.verdict_ticks", "s.last_tick > v.first_tick + c.config.verdict_ticks",
@@ -75,6 +77,12 @@ MUTANTS = [
     ("head-never-gains-signatures", "src/tape_voter.cpp",
      "(already != published_ticks_.end() && valid <= already->second)", "(already != published_ticks_.end())",
      "voter", "a published head gains the third signature once it lands"),
+    ("replica-resends-in-flight", "src/tape_replica.cpp", "    if (flight.sent_through >= first && self.now_ms_",
+     "    if (false && flight.sent_through >= first && self.now_ms_", "replica",
+     "each entry crosses to each follower about once over a slow link"),
+    ("recorder-resends-without-backoff", "src/tape_recorder.cpp",
+     "now - p.sent >= resend_after_ * (1u << std::min(p.attempts, 4u))", "now - p.sent >= resend_after_", "submitter",
+     "resends back off instead of repeating every interval"),
     ("skip-hmac-check", "src/tape_auth.cpp", "    if (!same(expected.bytes, frame.last(32))) return std::nullopt;", "",
      "voter", "a frame sealed with the wrong key is rejected"),
     ("wal-accepts-corruption", "src/tape_wal.cpp", "            if (allow_torn_tail && last) break;", "            if (allow_torn_tail) break;",
@@ -89,6 +97,9 @@ def build(scratch, build_dir, target, out):
     libs = [str(build_dir / "libvelocita_core.a"), str(build_dir / "libwillemt_raft.a")]
     if target == "core":
         cmd = base + [str(scratch / "tests/tape_log_apply.cpp")] + [str(scratch / f) for f in CORE] + ["-o", str(out)]
+    elif target == "submitter":
+        cmd = base + [str(scratch / "tests/tape_submitter_tests.cpp")] + [str(scratch / f) for f in RECORDER] + \
+              ["-L/opt/homebrew/lib", "-lssl", "-lcrypto", "-o", str(out)]
     elif target == "replica":
         cmd = base + [str(scratch / "tests/tape_replica_tests.cpp")] + [str(scratch / f) for f in REPLICA] + libs + ["-o", str(out)]
     else:

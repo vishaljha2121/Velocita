@@ -296,3 +296,19 @@ identical signed heads at ticks 60, 120 and 180, and an offline verify of NUC2's
 public keys alone. Head-key fingerprints: voter 1 d8486f20c11a37ec2de1fc94ebef6c7e8a0f15533b6a7a9751cf654d8b0b1807,
 voter 2 7b886f91f0a3faf7518a50fe997f48c4ed12432a8762a98c14ba2d51bdf60d45, voter 3
 5fb8b28617327d21903d272c3c28b56a75f8d840b5359412f1fcb104ca2780f6.
+
+**D-42. Each entry crosses the network once; the tape was stopped until that held.** About 25 minutes after
+go-live the hosts, all on Wi-Fi, were each sending 1 to 2.5 MB/s over Tailscale, host-to-host pings lost 90
+to 100%, Raft had moved through 36 terms and ticks had fallen to a quarter of real time. Books stayed
+correct (12 valid, none divergent), but the tape was congesting the network it shares. Stopping the
+recorders did not stop it; stopping the voters dropped every host to a few KB/s, and pings recovered to 0%
+loss and ~10 ms. Cause: on every proposal and every 200 ms heartbeat the leader resent a follower every
+entry it had not yet acknowledged, so traffic grows with the square of the round-trip time. On localhost
+that was invisible; on a relayed Wi-Fi link it fed on itself. Recorders had the same shape: every
+unacknowledged observation resent every 2 s to all voters, with no backoff. Fixes, both relying on Aeron
+already delivering reliably and in order: the replica sends a follower each entry once, and resends only
+after the follower reports a gap or 2 s pass without progress; the recorder backs off each resend (2, 4, 8,
+16, 32 s) and resends at most 64 per interval. New tests run the replica over a 400 ms link (before: 5,314
+entries sent for 303; now at most 1.25 per entry per follower) and over 10% message loss, and the submitter
+through a 60 s outage; mutants `replica-resends-in-flight` and `recorder-resends-without-backoff` are killed.
+The runbook now checks each host's send rate after start.

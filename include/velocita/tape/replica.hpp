@@ -28,6 +28,7 @@ struct ReplicaConfig {
     std::filesystem::path data_dir;
     int election_timeout_ms{1000};
     int request_timeout_ms{200};
+    int resend_after_ms{2000};
     Config tape;
 };
 
@@ -102,6 +103,13 @@ private:
     std::map<std::uint64_t, std::uint64_t> ticks_by_index_;
     std::map<std::uint64_t, std::pair<std::uint64_t, std::uint8_t>> heads_by_index_;
     std::set<std::pair<std::uint64_t, std::uint8_t>> head_sigs_in_log_;
+    struct InFlight {
+        std::int64_t term{};
+        std::uint64_t sent_through{};
+        std::uint64_t sent_at_ms{};
+    };
+    std::map<int, InFlight> in_flight_;
+    std::uint64_t now_ms_{};
 };
 
 }

@@ -30,7 +30,23 @@ ssh velocitas@100.84.151.116 "systemd-run --user --slice=velocitabuild.slice --u
     /usr/bin/taskset -c 3 /usr/bin/timeout 3600 /bin/sh \$HOME/velocita-tape-release-$C/deploy/tape/run-build-guarded.sh $C"
 ```
 
-Build one host at a time. Follow with `ssh HOST "tail -f ~/velocita-tape-release-$C/tape-build-$C.log"`. The image
+Build one host at a time. What was used on 2026-11-11 (D-37), because NUC1 and the Pi are short of disk:
+NUC2 builds natively as above; the Pi's image is built on the Mac from the Pi's own toolchain image and
+loaded onto the Pi; NUC1 loads NUC2's image. Stream binary data with `/usr/bin/ssh`, never the shell's
+`ssh` function (D-38), and copy through a checksummed file rather than a long pipe:
+
+```sh
+/usr/bin/ssh velocitas@100.84.151.116 'podman save --format docker-archive localhost/velocita-dev:current' | docker load
+docker build --platform linux/arm64 --build-arg DEV_IMAGE=localhost/velocita-dev:current \
+    --build-arg OPENSSL_VERSION=3.5.5-1ubuntu3.7 --build-arg SOURCE_COMMIT=$(git rev-parse HEAD) \
+    --build-arg TOOLCHAIN_ID=7796e188c717e65a9d4793a3b8673dde0124b3514a82b5ff3a060fe68728e97b \
+    -f deploy/tape/Containerfile -t localhost/velocita-tape:$C .
+docker save localhost/velocita-tape:$C | /usr/bin/ssh velocitas@100.84.151.116 'podman load'
+/usr/bin/ssh velocitas@100.85.36.22 "podman save --format docker-archive localhost/velocita-tape:$C" > tape-amd64.tar
+scp tape-amd64.tar velocitas@100.72.127.102: && /usr/bin/ssh velocitas@100.72.127.102 'podman load -i tape-amd64.tar && rm tape-amd64.tar'
+```
+
+Run `docker build` from a `git archive` export, not the working tree. Follow with `ssh HOST "tail -f ~/velocita-tape-release-$C/tape-build-$C.log"`. The image
 build runs every `tape-` test inside the builder and fails if any fails. When each finishes:
 
 ```sh
@@ -73,6 +89,13 @@ Keep `~/.cache/velocita-tape-deploy/$C/INCARNATION`: the verifier needs it. Afte
 
 ## 4. Watch
 
+First, the network budget (D-42). The tape needs tens of KB/s per host; if any host sends more than
+200 KB/s over `tailscale0` for a minute, stop the voters and recorders and investigate:
+
+```sh
+ssh HOST 'r() { awk "/tailscale0/ {gsub(\":\",\" \"); print \$10}" /proc/net/dev; }; a=$(r); sleep 10; b=$(r); echo $(( (b - a) / 10240 )) KB/s'
+```
+
 ```sh
 ssh HOST 'cat ~/velocita-tape/data/voter/state.json'
 curl -s http://100.85.36.22:45301/metrics | grep '^velocita_tape_'
@@ -111,3 +134,15 @@ $V --wal voter-1/wal.log --compare-wal voter-2/wal.log --incarnation $I \
 
 The verifier runs on the Mac from the local build. Recorded data
 stays private: it is never committed and never redistributed.
+
+## Upgrading a running tape
+
+Load the new image on every host and tag it `:current`, then restart one voter at a time, followers before
+the leader, waiting until each restarted voter's `applied_index` has caught up with the others before the
+next. Two voters always remain, so the tape keeps committing; recorders resend anything unacknowledged.
+Restart recorders and exporters only if their code changed. The incarnation, keys and data stay as they are.
+
+```sh
+ssh HOST 'systemctl --user restart velocita-tape-voter'
+ssh HOST 'python3 -c "import json;s=json.load(open(\"velocita-tape/data/voter/state.json\"));print(s[\"leader\"],s[\"applied_index\"])"'
+```

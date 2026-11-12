@@ -3,6 +3,7 @@
 #include "velocita/tape/websocket.hpp"
 #include "velocita/v2/digest.hpp"
 
+#include <algorithm>
 #include <ctime>
 #include <iostream>
 
@@ -12,6 +13,8 @@
 
 namespace velocita::tape {
 namespace {
+
+constexpr std::size_t kMaxResendsPerWindow = 64;
 
 std::int64_t utc_now() {
     timespec ts{};
@@ -304,13 +307,17 @@ void Submitter::step(std::chrono::steady_clock::time_point now) {
             enqueue(encode(p), now);
         }
     }
-    std::size_t resent = 0;
+    if (now - window_start_ >= resend_after_) {
+        window_start_ = now;
+        window_resends_ = 0;
+    }
     for (auto& p : unacked_) {
-        if (resent >= 64) break;
-        if (now - p.sent >= resend_after_) {
+        if (window_resends_ >= kMaxResendsPerWindow) break;
+        if (now - p.sent >= resend_after_ * (1u << std::min(p.attempts, 4u))) {
             send_(p.bytes);
             p.sent = now;
-            ++resent;
+            ++p.attempts;
+            ++window_resends_;
         }
     }
 }

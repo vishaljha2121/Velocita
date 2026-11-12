@@ -117,8 +117,11 @@ private:
         std::uint64_t request{};
         std::vector<std::byte> bytes;
         std::chrono::steady_clock::time_point sent;
+        unsigned attempts{};
     };
     std::deque<Pending> unacked_;
+    std::chrono::steady_clock::time_point window_start_{};
+    std::size_t window_resends_{};
 };
 
 [[nodiscard]] std::uint32_t clock_error_us() noexcept;

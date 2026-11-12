@@ -1,5 +1,6 @@
 #include "velocita/tape/replica.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 
@@ -57,6 +58,7 @@ TapeReplica::~TapeReplica() {
 void TapeReplica::flush() { wal_.sync(); }
 
 void TapeReplica::tick(int elapsed_ms) {
+    now_ms_ += static_cast<std::uint64_t>(elapsed_ms > 0 ? elapsed_ms : 0);
     flush();
     const int rc = raft_periodic(server_, elapsed_ms);
     if (rc != 0 && rc != RAFT_ERR_NOT_LEADER) throw std::runtime_error("raft_periodic failed: " + std::to_string(rc));
@@ -142,6 +144,7 @@ void TapeReplica::receive(const PeerMessage& message) {
         response.success = v->success ? 1 : 0;
         response.current_idx = v->current_index;
         response.first_idx = v->first_index;
+        if (!v->success) in_flight_.erase(message.sender_id);
         rc = raft_recv_appendentries_response(server_, sender, &response);
     }
     if (rc != 0 && rc != RAFT_ERR_NOT_LEADER) throw std::runtime_error("Raft message handling failed: " + std::to_string(rc));
@@ -206,20 +209,31 @@ int TapeReplica::cb_send_requestvote(raft_server_t*, void* user_data, raft_node_
 
 int TapeReplica::cb_send_appendentries(raft_server_t*, void* user_data, raft_node_t* node, msg_appendentries_t* m) {
     auto& self = self_of(user_data);
+    const auto id = raft_node_get_id(node);
+    auto& flight = self.in_flight_[id];
+    if (flight.term != m->term) flight = {m->term, 0, 0};
+    const auto first = static_cast<std::uint64_t>(m->prev_log_idx) + 1;
+    int skip = 0;
+    if (flight.sent_through >= first && self.now_ms_ - flight.sent_at_ms < static_cast<std::uint64_t>(self.config_.resend_after_ms))
+        skip = static_cast<int>(std::min<std::uint64_t>(flight.sent_through - first + 1, static_cast<std::uint64_t>(m->n_entries)));
     AppendEntries out;
     out.term = m->term;
-    out.previous_log_index = m->prev_log_idx;
-    out.previous_log_term = m->prev_log_term;
+    out.previous_log_index = m->prev_log_idx + skip;
+    out.previous_log_term = skip > 0 ? m->entries[skip - 1].term : m->prev_log_term;
     out.leader_commit = m->leader_commit;
     std::size_t total = 0;
-    for (int i = 0; i < m->n_entries && out.entries.size() < kMaxEntriesPerAppend; ++i) {
+    for (int i = skip; i < m->n_entries && out.entries.size() < kMaxEntriesPerAppend; ++i) {
         const auto& e = m->entries[i];
         if (!out.entries.empty() && total + e.data.len > kMaxAppendBytes) break;
         const auto* p = static_cast<const std::byte*>(e.data.buf);
         out.entries.push_back({e.term, e.id, e.type, std::vector<std::byte>(p, p + e.data.len)});
         total += e.data.len;
     }
-    self.send_({self.config_.node_id, raft_node_get_id(node), std::move(out)});
+    if (!out.entries.empty()) {
+        flight.sent_through = static_cast<std::uint64_t>(out.previous_log_index) + out.entries.size();
+        flight.sent_at_ms = self.now_ms_;
+    }
+    self.send_({self.config_.node_id, id, std::move(out)});
     return 0;
 }
 

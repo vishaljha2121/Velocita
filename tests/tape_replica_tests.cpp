@@ -53,6 +53,12 @@ struct Cluster {
     std::array<std::unique_ptr<TapeReplica>, 3> nodes;
     std::vector<bool> up;
     std::vector<std::vector<PeerMessage>> inbox;
+    int latency_ms = 0;
+    unsigned loss_percent = 0;
+    std::uint64_t clock_ms = 0;
+    std::uint64_t entries_on_wire = 0;
+    std::mt19937 wire_rng{99};
+    std::vector<std::pair<std::uint64_t, PeerMessage>> wire;
 
     explicit Cluster(const std::string& name) : root(std::filesystem::temp_directory_path() / ("tape-replica-" + name)) {
         std::filesystem::remove_all(root);
@@ -69,8 +75,15 @@ struct Cluster {
         c.data_dir = root / ("node-" + std::to_string(i + 1));
         c.tape.head_every_ticks = 0;
         nodes[i] = std::make_unique<TapeReplica>(c, [this](const PeerMessage& m) {
+            if (const auto* a = std::get_if<AppendEntries>(&m.payload)) entries_on_wire += a->entries.size();
             const int to = m.recipient_id - 1;
-            if (to >= 0 && to < 3 && up[to]) inbox[to].push_back(m);
+            if (to < 0 || to >= 3 || !up[to]) return;
+            if (latency_ms == 0 && loss_percent == 0) {
+                inbox[to].push_back(m);
+                return;
+            }
+            if (wire_rng() % 100 < loss_percent) return;
+            wire.emplace_back(clock_ms + static_cast<std::uint64_t>(latency_ms), m);
         });
         up[i] = true;
     }
@@ -81,6 +94,16 @@ struct Cluster {
     }
     void run(int ms) {
         for (int t = 0; t < ms; t += 10) {
+            clock_ms += 10;
+            for (auto it = wire.begin(); it != wire.end();) {
+                const int to = it->second.recipient_id - 1;
+                if (it->first > clock_ms) {
+                    ++it;
+                    continue;
+                }
+                if (up[to]) inbox[to].push_back(it->second);
+                it = wire.erase(it);
+            }
             for (int i = 0; i < 3; ++i)
                 if (up[i]) nodes[i]->tick(10);
             for (int round = 0; round < 4; ++round)
@@ -183,6 +206,43 @@ void test_no_majority_commits_nothing() {
     check(c.nodes[l]->status().commit_index == before, "a lone leader commits nothing");
 }
 
+void test_slow_links_send_each_entry_about_once() {
+    Cluster c("slow");
+    c.latency_ms = 400;
+    for (std::uint8_t r = 1; r <= 3; ++r) check(c.propose(session_start(r, 300 + r)), "session start proposed on a slow link");
+    std::uint64_t next = 2;
+    for (int k = 0; k < 300; ++k) {
+        if (c.propose(gap_event(1, 301, next))) ++next;
+        c.run(20);
+    }
+    c.run(6000);
+    const auto proposed = 3 + (next - 2);
+    bool all = true;
+    for (auto& n : c.nodes) all = all && n->status().applied_index >= proposed;
+    check(all, "every voter applies every entry over a 400 ms link");
+    check(c.entries_on_wire <= proposed * 2 * 5 / 4,
+          "each entry crosses to each follower about once over a slow link (" + std::to_string(c.entries_on_wire) +
+              " entries sent for " + std::to_string(proposed) + ")");
+}
+
+void test_lossy_links_still_commit_everything() {
+    Cluster c("lossy");
+    c.latency_ms = 50;
+    c.loss_percent = 10;
+    for (std::uint8_t r = 1; r <= 3; ++r) check(c.propose(session_start(r, 400 + r)), "session start proposed on a lossy link");
+    std::uint64_t next = 2;
+    for (int k = 0; k < 200; ++k) {
+        if (c.propose(gap_event(1, 401, next))) ++next;
+        c.run(20);
+    }
+    c.loss_percent = 0;
+    c.run(10000);
+    const auto st = c.nodes[0]->status();
+    bool same = true;
+    for (auto& n : c.nodes) same = same && n->status().applied_index == st.applied_index && st.applied_index >= 3 + (next - 2);
+    check(same, "every voter applies every entry after 10% message loss");
+}
+
 void test_wal_recovery_trims_torn_tail_and_refuses_corruption() {
     const auto dir = std::filesystem::temp_directory_path() / "tape-wal-recovery";
     std::filesystem::remove_all(dir);
@@ -227,6 +287,8 @@ int main() {
     test_one_voter_down_keeps_committing_and_rejoins();
     test_no_majority_commits_nothing();
     test_wal_recovery_trims_torn_tail_and_refuses_corruption();
+    test_slow_links_send_each_entry_about_once();
+    test_lossy_links_still_commit_everything();
     if (failures) {
         std::cerr << failures << " failures\n";
         return 1;
