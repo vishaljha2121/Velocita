@@ -19,7 +19,7 @@ if [ "$current" = "$incarnation" ]; then
     echo "tape rotate: already on segment $incarnation"
     exit 0
 fi
-if [ "$current" -gt "$incarnation" ]; then
+if [ "$current" -gt "$incarnation" ] && [ $(( current % interval )) -eq 0 ]; then
     echo "tape rotate: current segment $current is newer than $incarnation; refusing" >&2
     exit 65
 fi

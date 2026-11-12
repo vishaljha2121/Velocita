@@ -86,6 +86,13 @@ class RotateTests(unittest.TestCase):
         self.assertEqual(r.returncode, 65)
         self.assertEqual(h.calls(), [])
 
+    def test_a_legacy_random_incarnation_rotates_into_a_time_segment(self):
+        h = Host(incarnation=68934737119228)
+        r = h.rotate(3 * DAY + 5)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((h.base / "data/segments/68934737119228/heads/head-120.json").exists())
+        self.assertEqual(h.conf("voter.conf")["incarnation"], str(3 * DAY))
+
     def test_only_the_newest_segments_are_kept_locally(self):
         h = Host(incarnation=DAY)
         for k in (2, 3, 4):
