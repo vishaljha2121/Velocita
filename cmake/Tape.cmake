@@ -83,6 +83,8 @@ if(BUILD_TESTING)
     add_test(NAME tape-exporter-links-no-tape-code
         COMMAND ${CMAKE_COMMAND} -DTARGET_FILE=$<TARGET_FILE:velocita-tape-exporter> -DCHECK=MET-1
             "-DFORBIDDEN=velocita" -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_tape_symbols.cmake)
+    add_test(NAME tape-watchdog-tests COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tape_watchdog.py)
+    set_tests_properties(tape-watchdog-tests PROPERTIES TIMEOUT 120)
     add_executable(tape-submitter-tests tests/tape_submitter_tests.cpp)
     target_link_libraries(tape-submitter-tests PRIVATE velocita_tape_recorder)
     target_compile_options(tape-submitter-tests PRIVATE -Wall -Wextra -Wpedantic)
