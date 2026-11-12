@@ -430,3 +430,25 @@ serves both files. A new dashboard row shows each process's bytes on the wire, r
 transport trouble, and the tape's share of each host's Tailscale send, which answers D-50's open
 question the next time a burst happens. `AeronRuntime` only gained a read-only accessor; nothing the
 trading code uses changed.
+
+**D-53. The Aeron counters named the sender: the Pi's recorder, inside Aeron.** Within an hour of
+deploying D-52 the Pi's watchdog tripped again (2,062 KB/s). Its recorder's embedded driver had sent
+1.22 GB in about four minutes (about 5 MB/s) while the recorder itself could offer at most about 100 KB/s
+under its budget; only 37 MB of that was counted as retransmission, and the recorder had sent 882,000
+NAKs. This happened while the Pi's voter, which the recorder also publishes to, was being killed and
+restarted every few seconds. So the floods are Aeron multiplying traffic when a peer is unreachable or
+flapping, not the tape's own logic. A likely contributor: Aeron's default 1,408-byte frames exceed the
+1,280-byte Tailscale MTU, so every full frame becomes two IP fragments and any loss doubles. Not yet
+proven.
+
+**D-54. The log outgrew memory and disk; the tape is stopped.** D-34's estimate came from a two-minute run
+and was wrong by about ten times: the log grows about 30 KB/s (2.5 GB a day). Every voter keeps the whole
+log in memory (compaction was deferred, D-07), at about 2.5 times its size on disk, so after 14 hours the
+NUC voters sat at their 1 GB container limit and the Pi's voter was killed for lack of memory every few
+seconds while replaying its 357 MB log. That crash loop is what set off the Pi's recorder (D-53). Memory
+limits are now per host (`TAPE_MEMORY`: 3 GB on the NUCs, 2 GB on the Pi), but that only buys hours.
+At 14:36 UTC on 2026-11-12 I stopped the voters, recorders and watchdogs on all three hosts so the cycle of
+out-of-memory restarts and floods could not keep hitting the shared Wi-Fi. Logs, keys and configs are kept
+(417, 357 and 419 MB); exporters, the tape Prometheus and the dashboard stay up. Restarting needs two
+fixes: a bounded log (rotating the incarnation on a schedule, or real compaction) and Aeron frames that
+fit the tunnel.
