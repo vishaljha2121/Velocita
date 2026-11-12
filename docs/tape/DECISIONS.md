@@ -312,3 +312,46 @@ after the follower reports a gap or 2 s pass without progress; the recorder back
 entries sent for 303; now at most 1.25 per entry per follower) and over 10% message loss, and the submitter
 through a 60 s outage; mutants `replica-resends-in-flight` and `recorder-resends-without-backoff` are killed.
 The runbook now checks each host's send rate after start.
+
+**D-43. Every tape process has a hard bandwidth ceiling, and a watchdog stops the tape if the host's
+Tailscale traffic stays high.** D-42 was not enough. At 01:00 UTC a 1 GB upload from the Mac saturated
+the shared Wi-Fi; host-to-host pings lost 40 to 100%, and the tape then kept the network down after the
+upload stopped. The Pi, with no leader, sent 900 KB/s (recorder about 400, voter about 500) and NUC2
+1.4 MB/s; stopping the tape brought every link back to 0% loss within a minute. The amplifiers were
+everything the tape resends when the other side is silent: each new leader resending 256 KB batches to
+followers that had fallen behind, resends that never backed off while new entries kept arriving, recorder
+resends to all three voters, and Aeron's own retransmission of large messages. The fixes give every
+loop a ceiling that does not depend on the network behaving:
+- the replica spends a per-follower byte budget for log entries (64 KB/s, 64 KB burst), sends at most 32
+  entries or 32 KB per message, and after 2 s without progress sends one batch as a probe, doubling the
+  wait up to 16 s, instead of re-sending the backlog;
+- the recorder spends a 32 KB/s send budget (unsent observations wait in the queue), and resends at most
+  32 per interval with per-observation backoff;
+- the election timeout is 3 s (the Wi-Fi links spike past 500 ms), and Aeron's receiver window is 64 KB;
+- `velocita-tape-watchdog` stops the tape's voter and recorder if `tailscale0` sends more than 600 KB/s
+  for 60 s, and leaves `watchdog-tripped` in the data directory. The tape's own worst case is about
+  200 KB/s, so the watchdog fires only when something has gone wrong; it counts all Tailscale traffic, so
+  stop it during deliberate bulk transfers.
+Tests: a silent follower now costs at most 192 resent entries in 60 s (960 without backoff); catch-up
+of a 3,000-entry backlog never exceeds the budget plus one burst in any second (142 KB without the
+budget); the submitter never exceeds its budget (92 KB in one second without it). Each has a mutant.
+
+**D-44. Paper trading and the market-data recorder are paused; only the tape runs.** Owner instruction
+2026-11-12: pause the trading cluster and run only the tape on the three machines. The v2 trading voters
+were already stopped. Stopped now: `velocita-paper-stochastic-node` and its exporter on NUC1 and NUC2
+(the Pi's had already failed), and on NUC1 `velocita-md-stream` and the `velocita-md-archive` timer. Paper
+trading uses a paper venue, and its ledger stays on disk and is reconciled at restart. The market-data
+recorder was refilling NUC1's disk (300 MB/h) and downloading about 500 KB/s over the shared Wi-Fi. Left
+running: monitoring (Prometheus, Grafana, Alertmanager, ntfy, node exporters) and the trading secrets
+check timers. Units stay enabled, so a reboot would start them again.
+
+**D-45. My deletion of six unpruned market-data archives blocked their prune; repair is staged.** D-36
+deleted the Oct 29 to Nov 3 archives on NUC1 after the Mac had verified copies, assuming the nightly job
+removes acknowledged archives. It removes only *pruned* ones, and pruning requires the archive on host
+to verify, so those six days' rows (about 3.65 million) can no longer be pruned, and the 00:30 UTC
+archive run failed for lack of temporary space. The repair restores each archive from the Mac's verified
+copy (checked against NUC1's ack), restores its manifest (rebuilt from the archive: rows, id range and
+both hashes match the originals' rules; `archived_at_ns` is the original file time to the minute), and
+then runs only the job's own `prune()` and `remove_old_archives()` under its lock. The tooling is in
+`~/.cache/velocita-md-repair`. It is paused with the market-data recorder (D-44); uploads must be
+rate-limited (`scp -l`) so they cannot flood the Wi-Fi.

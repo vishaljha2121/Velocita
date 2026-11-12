@@ -2,7 +2,9 @@
 #include "velocita/tape/recorder.hpp"
 
 #include <chrono>
+#include <algorithm>
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -77,11 +79,33 @@ void test_a_long_outage_is_capped_per_window() {
     check((sends.size() - first) <= 64 * 15 + 64, "a backlog of 1000 is resent at no more than 64 per interval");
 }
 
+void test_sending_stays_within_the_byte_budget() {
+    Ring ring(4096);
+    for (std::uint64_t n = 0; n < 2000; ++n) ring.push(gap_item(n));
+    std::map<long long, std::size_t> per_second;
+    std::size_t total = 0;
+    auto now = std::chrono::steady_clock::time_point{} + 1h;
+    const auto origin = now;
+    Submitter s(3, 99, ring, 4096, 2000ms, [&](std::span<const std::byte> e) {
+        per_second[std::chrono::duration_cast<std::chrono::seconds>(now - origin).count()] += e.size();
+        total += e.size();
+    }, 2 * 1024, 4 * 1024);
+    for (int ms = 0; ms < 30000; ms += 10) {
+        s.step(now);
+        now += 10ms;
+    }
+    std::size_t worst = 0;
+    for (const auto& [second, bytes] : per_second) worst = std::max(worst, bytes);
+    check(worst <= 2 * 1024 + 4 * 1024, "no second sends more than the budget plus one burst (" + std::to_string(worst) + " bytes)");
+    check(total >= 2 * 1024 * 25, "the budget is used, not starved (" + std::to_string(total) + " bytes in 30 s)");
+}
+
 }
 
 int main() {
     test_unacknowledged_items_back_off();
     test_a_long_outage_is_capped_per_window();
+    test_sending_stays_within_the_byte_budget();
     if (failures) {
         std::cerr << failures << " failures\n";
         return 1;

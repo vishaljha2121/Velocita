@@ -1,0 +1,11 @@
+[Unit]
+Description=Velocita verifiable tape network watchdog
+
+[Service]
+Type=simple
+ExecStart=/bin/sh %h/velocita-tape/watchdog.sh 600 6
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

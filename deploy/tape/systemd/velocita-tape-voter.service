@@ -9,7 +9,7 @@ ExecStart=/usr/bin/podman run --rm --replace --name velocita-tape-voter \
     --network host --userns=keep-id \
     --read-only --security-opt no-new-privileges --cap-drop all \
     --pids-limit 128 --memory 1g --log-driver journald \
-    --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 \
+    --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 -e AERON_RCV_INITIAL_WINDOW_LENGTH=65536 \
     -v %h/velocita-tape/config:/etc/velocita-tape:ro \
     -v %h/velocita-tape/data:/var/lib/velocita-tape \
     -v %t/velocita-tape-secrets:/run/velocita-tape-secrets:ro \

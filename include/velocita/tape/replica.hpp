@@ -29,6 +29,9 @@ struct ReplicaConfig {
     int election_timeout_ms{1000};
     int request_timeout_ms{200};
     int resend_after_ms{2000};
+    int resend_after_max_ms{16000};
+    std::size_t append_bytes_per_second{64 * 1024};
+    std::size_t append_burst_bytes{64 * 1024};
     Config tape;
 };
 
@@ -107,6 +110,10 @@ private:
         std::int64_t term{};
         std::uint64_t sent_through{};
         std::uint64_t sent_at_ms{};
+        std::uint64_t wait_ms{};
+        std::uint64_t acknowledged{};
+        double tokens{-1};
+        std::uint64_t tokens_at_ms{};
     };
     std::map<int, InFlight> in_flight_;
     std::uint64_t now_ms_{};

@@ -7,6 +7,8 @@
 #include <fstream>
 #include <iostream>
 #include <array>
+#include <map>
+#include <algorithm>
 #include <memory>
 #include <random>
 #include <string>
@@ -57,6 +59,9 @@ struct Cluster {
     unsigned loss_percent = 0;
     std::uint64_t clock_ms = 0;
     std::uint64_t entries_on_wire = 0;
+    std::array<bool, 3> mute{};
+    std::array<std::uint64_t, 3> entries_to{};
+    std::array<std::map<std::uint64_t, std::uint64_t>, 3> bytes_to_by_second;
     std::mt19937 wire_rng{99};
     std::vector<std::pair<std::uint64_t, PeerMessage>> wire;
 
@@ -75,8 +80,15 @@ struct Cluster {
         c.data_dir = root / ("node-" + std::to_string(i + 1));
         c.tape.head_every_ticks = 0;
         nodes[i] = std::make_unique<TapeReplica>(c, [this](const PeerMessage& m) {
-            if (const auto* a = std::get_if<AppendEntries>(&m.payload)) entries_on_wire += a->entries.size();
             const int to = m.recipient_id - 1;
+            if (const auto* a = std::get_if<AppendEntries>(&m.payload)) {
+                entries_on_wire += a->entries.size();
+                if (to >= 0 && to < 3) {
+                    entries_to[to] += a->entries.size();
+                    for (const auto& e : a->entries) bytes_to_by_second[to][clock_ms / 1000] += e.payload.size();
+                }
+            }
+            if (m.sender_id >= 1 && m.sender_id <= 3 && mute[m.sender_id - 1]) return;
             if (to < 0 || to >= 3 || !up[to]) return;
             if (latency_ms == 0 && loss_percent == 0) {
                 inbox[to].push_back(m);
@@ -245,6 +257,55 @@ void test_lossy_links_still_commit_everything() {
     check(same, "every voter applies every entry after 10% message loss");
 }
 
+void test_a_follower_that_never_answers_costs_little() {
+    Cluster c("mute");
+    const int l = c.await_leader();
+    check(l >= 0, "a leader is elected before a follower goes silent");
+    const int f = (l + 1) % 3;
+    for (std::uint8_t r = 1; r <= 3; ++r) check(c.propose(session_start(r, 500 + r)), "session start proposed");
+    c.run(500);
+    c.mute[f] = true;
+    std::uint64_t next = 2, proposed = 0;
+    for (int k = 0; k < 120; ++k) {
+        if (c.propose(gap_event(1, 501, next))) ++next, ++proposed;
+        c.run(20);
+    }
+    c.run(1000);
+    check(c.nodes[c.leader()]->status().commit_index >= 3 + proposed, "the leader keeps committing with one silent follower");
+    const auto before = c.entries_to[f];
+    c.run(60000);
+    const auto resent = c.entries_to[f] - before;
+    check(resent <= 6 * 32, "a silent follower gets a backed-off probe, not the backlog (" + std::to_string(resent) +
+                                " entries resent in 60 s)");
+    c.mute[f] = false;
+    c.run(5000);
+    check(c.nodes[f]->status().applied_index == c.nodes[c.leader()]->status().applied_index,
+          "a follower that answers again catches up");
+}
+
+void test_catch_up_respects_the_byte_budget() {
+    Cluster c("budget");
+    const int l = c.await_leader();
+    check(l >= 0, "a leader is elected before a follower stops");
+    const int f = (l + 1) % 3;
+    for (std::uint8_t r = 1; r <= 3; ++r) check(c.propose(session_start(r, 600 + r)), "session start proposed");
+    c.run(500);
+    c.stop(f);
+    std::uint64_t next = 2;
+    for (int k = 0; k < 3000; ++k) {
+        if (c.propose(gap_event(1, 601, next))) ++next;
+        if (k % 50 == 0) c.run(10);
+    }
+    c.run(1000);
+    c.start(f);
+    c.run(60000);
+    const auto st = c.nodes[c.leader()]->status();
+    check(c.nodes[f]->status().applied_index == st.applied_index, "a returning follower catches up on a 3,000-entry backlog");
+    std::uint64_t worst = 0;
+    for (const auto& [second, bytes] : c.bytes_to_by_second[f]) worst = std::max(worst, bytes);
+    check(worst <= 2 * 64 * 1024, "no second sends a follower more than the budget plus one burst (" + std::to_string(worst) + " bytes)");
+}
+
 void test_wal_recovery_trims_torn_tail_and_refuses_corruption() {
     const auto dir = std::filesystem::temp_directory_path() / "tape-wal-recovery";
     std::filesystem::remove_all(dir);
@@ -291,6 +352,8 @@ int main() {
     test_wal_recovery_trims_torn_tail_and_refuses_corruption();
     test_slow_links_send_each_entry_about_once();
     test_lossy_links_still_commit_everything();
+    test_a_follower_that_never_answers_costs_little();
+    test_catch_up_respects_the_byte_budget();
     if (failures) {
         std::cerr << failures << " failures\n";
         return 1;

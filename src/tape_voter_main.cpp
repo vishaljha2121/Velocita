@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
         if (c.replica.node_id < 1 || c.replica.node_id > 3) throw std::runtime_error("node_id must be 1, 2 or 3");
         c.replica.members = {1, 2, 3};
         c.replica.data_dir = kv.get("data_dir");
-        c.replica.election_timeout_ms = static_cast<int>(kv.number("election_timeout_ms", 1000));
+        c.replica.election_timeout_ms = static_cast<int>(kv.number("election_timeout_ms", 3000));
         c.replica.request_timeout_ms = static_cast<int>(kv.number("request_timeout_ms", 200));
         c.replica.tape.verdict_ticks = kv.number("verdict_ticks", 5);
         c.replica.tape.head_every_ticks = kv.number("head_every_ticks", 60);

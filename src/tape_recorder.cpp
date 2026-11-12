@@ -14,7 +14,7 @@
 namespace velocita::tape {
 namespace {
 
-constexpr std::size_t kMaxResendsPerWindow = 64;
+constexpr std::size_t kMaxResendsPerWindow = 32;
 
 std::int64_t utc_now() {
     timespec ts{};
@@ -233,13 +233,29 @@ void Reader::run() {
 }
 
 Submitter::Submitter(std::uint8_t recorder, std::uint64_t session, Ring& ring, std::size_t unacked_capacity,
-                     std::chrono::milliseconds resend_after, Send send)
+                     std::chrono::milliseconds resend_after, Send send, std::size_t bytes_per_second,
+                     std::size_t burst_bytes)
     : recorder_(recorder), session_(session), ring_(ring), capacity_(unacked_capacity), resend_after_(resend_after),
-      send_(std::move(send)) {}
+      send_(std::move(send)), rate_(static_cast<double>(bytes_per_second)), burst_(static_cast<double>(burst_bytes)) {}
+
+bool Submitter::spend(std::size_t bytes, std::chrono::steady_clock::time_point now) {
+    if (!tokens_started_) {
+        tokens_started_ = true;
+        tokens_ = burst_;
+        tokens_at_ = now;
+    }
+    const auto elapsed = std::chrono::duration<double>(now - tokens_at_).count();
+    tokens_ = std::min(burst_, tokens_ + rate_ * elapsed);
+    tokens_at_ = now;
+    if (tokens_ < static_cast<double>(bytes)) return false;
+    tokens_ -= static_cast<double>(bytes);
+    return true;
+}
 
 void Submitter::enqueue(std::vector<std::byte> bytes, std::chrono::steady_clock::time_point now) {
-    send_(bytes);
-    unacked_.push_back({next_request_ - 1, std::move(bytes), now});
+    const bool sent = spend(bytes.size(), now);
+    if (sent) send_(bytes);
+    unacked_.push_back({next_request_ - 1, std::move(bytes), now, 0, sent});
 }
 
 void Submitter::step(std::chrono::steady_clock::time_point now) {
@@ -312,8 +328,16 @@ void Submitter::step(std::chrono::steady_clock::time_point now) {
         window_resends_ = 0;
     }
     for (auto& p : unacked_) {
-        if (window_resends_ >= kMaxResendsPerWindow) break;
+        if (!p.sent_once) {
+            if (!spend(p.bytes.size(), now)) break;
+            send_(p.bytes);
+            p.sent = now;
+            p.sent_once = true;
+            continue;
+        }
+        if (window_resends_ >= kMaxResendsPerWindow) continue;
         if (now - p.sent >= resend_after_ * (1u << std::min(p.attempts, 4u))) {
+            if (!spend(p.bytes.size(), now)) break;
             send_(p.bytes);
             p.sent = now;
             ++p.attempts;

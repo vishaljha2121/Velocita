@@ -87,6 +87,16 @@ for h in velocitas@100.72.127.102 velocitas@100.84.151.116 velocitas@100.85.36.2
 Keep `~/.cache/velocita-tape-deploy/$C/INCARNATION`: the verifier needs it. After a host reboot, run
 `! tools/tape-key-ceremony.sh push` before the units can start (the master secret lives only in tmpfs).
 
+Install the watchdog on every host (D-43) before starting the tape:
+
+```sh
+ssh HOST "cp ~/velocita-tape-release-$C/deploy/tape/watchdog.sh ~/velocita-tape/ && \
+    cp ~/velocita-tape-release-$C/deploy/tape/systemd/velocita-tape-watchdog.service ~/.config/systemd/user/ && \
+    systemctl --user daemon-reload && systemctl --user start velocita-tape-watchdog"
+```
+
+Never copy large files to a host while the tape runs without a rate limit: `scp -l 4000` (500 KB/s).
+
 ## 4. Watch
 
 First, the network budget (D-42). The tape needs tens of KB/s per host; if any host sends more than

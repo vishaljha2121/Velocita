@@ -7,8 +7,8 @@
 namespace velocita::tape {
 namespace {
 
-constexpr std::size_t kMaxEntriesPerAppend = 64;
-constexpr std::size_t kMaxAppendBytes = 256 * 1024;
+constexpr std::size_t kMaxEntriesPerAppend = 32;
+constexpr std::size_t kMaxAppendBytes = 32 * 1024;
 
 TapeReplica& self_of(void* user_data) { return *static_cast<TapeReplica*>(user_data); }
 
@@ -144,7 +144,15 @@ void TapeReplica::receive(const PeerMessage& message) {
         response.success = v->success ? 1 : 0;
         response.current_idx = v->current_index;
         response.first_idx = v->first_index;
-        if (!v->success) in_flight_.erase(message.sender_id);
+        if (const auto it = in_flight_.find(message.sender_id); it != in_flight_.end()) {
+            auto& flight = it->second;
+            if (!v->success) {
+                flight.sent_through = 0;
+            } else if (static_cast<std::uint64_t>(v->current_index) > flight.acknowledged) {
+                flight.acknowledged = static_cast<std::uint64_t>(v->current_index);
+                flight.wait_ms = static_cast<std::uint64_t>(config_.resend_after_ms);
+            }
+        }
         rc = raft_recv_appendentries_response(server_, sender, &response);
     }
     if (rc != 0 && rc != RAFT_ERR_NOT_LEADER) throw std::runtime_error("Raft message handling failed: " + std::to_string(rc));
@@ -210,12 +218,30 @@ int TapeReplica::cb_send_requestvote(raft_server_t*, void* user_data, raft_node_
 int TapeReplica::cb_send_appendentries(raft_server_t*, void* user_data, raft_node_t* node, msg_appendentries_t* m) {
     auto& self = self_of(user_data);
     const auto id = raft_node_get_id(node);
+    const auto& cfg = self.config_;
     auto& flight = self.in_flight_[id];
-    if (flight.term != m->term) flight = {m->term, 0, 0};
+    if (flight.term != m->term) {
+        const auto tokens = flight.tokens;
+        const auto tokens_at = flight.tokens_at_ms;
+        flight = {};
+        flight.term = m->term;
+        flight.tokens = tokens;
+        flight.tokens_at_ms = tokens_at;
+    }
+    if (flight.wait_ms == 0) flight.wait_ms = static_cast<std::uint64_t>(cfg.resend_after_ms);
+    const auto burst = static_cast<double>(cfg.append_burst_bytes);
+    if (flight.tokens < 0) flight.tokens = burst;
+    flight.tokens = std::min(burst, flight.tokens + static_cast<double>(cfg.append_bytes_per_second) *
+                                                        static_cast<double>(self.now_ms_ - flight.tokens_at_ms) / 1000.0);
+    flight.tokens_at_ms = self.now_ms_;
     const auto first = static_cast<std::uint64_t>(m->prev_log_idx) + 1;
     int skip = 0;
-    if (flight.sent_through >= first && self.now_ms_ - flight.sent_at_ms < static_cast<std::uint64_t>(self.config_.resend_after_ms))
-        skip = static_cast<int>(std::min<std::uint64_t>(flight.sent_through - first + 1, static_cast<std::uint64_t>(m->n_entries)));
+    if (flight.sent_through >= first) {
+        if (self.now_ms_ - flight.sent_at_ms < flight.wait_ms)
+            skip = static_cast<int>(std::min<std::uint64_t>(flight.sent_through - first + 1, static_cast<std::uint64_t>(m->n_entries)));
+        else
+            flight.wait_ms = std::min<std::uint64_t>(flight.wait_ms * 2, static_cast<std::uint64_t>(cfg.resend_after_max_ms));
+    }
     AppendEntries out;
     out.term = m->term;
     out.previous_log_index = m->prev_log_idx + skip;
@@ -225,13 +251,16 @@ int TapeReplica::cb_send_appendentries(raft_server_t*, void* user_data, raft_nod
     for (int i = skip; i < m->n_entries && out.entries.size() < kMaxEntriesPerAppend; ++i) {
         const auto& e = m->entries[i];
         if (!out.entries.empty() && total + e.data.len > kMaxAppendBytes) break;
+        if (static_cast<double>(total + e.data.len) > flight.tokens) break;
         const auto* p = static_cast<const std::byte*>(e.data.buf);
         out.entries.push_back({e.term, e.id, e.type, std::vector<std::byte>(p, p + e.data.len)});
         total += e.data.len;
     }
     if (!out.entries.empty()) {
-        flight.sent_through = static_cast<std::uint64_t>(out.previous_log_index) + out.entries.size();
+        flight.sent_through = std::max<std::uint64_t>(flight.sent_through,
+                                                      static_cast<std::uint64_t>(out.previous_log_index) + out.entries.size());
         flight.sent_at_ms = self.now_ms_;
+        flight.tokens -= static_cast<double>(total);
     }
     self.send_({self.config_.node_id, id, std::move(out)});
     return 0;

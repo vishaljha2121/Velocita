@@ -7,6 +7,7 @@ listen=100.72.127.102:45101
 master_key_file=/run/velocita-tape-secrets/master.key
 signing_key_file=/etc/velocita-tape/head-1.pem
 tick_ms=1000
+election_timeout_ms=3000
 verdict_ticks=5
 head_every_ticks=60
 peer.2=100.84.151.116:45102

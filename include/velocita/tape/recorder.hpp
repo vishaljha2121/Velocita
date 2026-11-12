@@ -33,6 +33,7 @@ struct RecorderConfig {
     std::chrono::milliseconds backoff_cap{60000};
     std::chrono::milliseconds refresh_every{15 * 60 * 1000};
     std::chrono::milliseconds resend_after{2000};
+    std::size_t send_bytes_per_second{32 * 1024};
 };
 
 struct Item {
@@ -96,7 +97,8 @@ class Submitter {
 public:
     using Send = std::function<void(std::span<const std::byte> entry)>;
     Submitter(std::uint8_t recorder, std::uint64_t session, Ring& ring, std::size_t unacked_capacity,
-              std::chrono::milliseconds resend_after, Send send);
+              std::chrono::milliseconds resend_after, Send send, std::size_t bytes_per_second = 32 * 1024,
+              std::size_t burst_bytes = 64 * 1024);
     void step(std::chrono::steady_clock::time_point now);
     void on_ack(std::uint64_t session, std::uint64_t applied);
     [[nodiscard]] std::uint64_t next_request() const noexcept { return next_request_; }
@@ -118,7 +120,14 @@ private:
         std::vector<std::byte> bytes;
         std::chrono::steady_clock::time_point sent;
         unsigned attempts{};
+        bool sent_once{};
     };
+    bool spend(std::size_t bytes, std::chrono::steady_clock::time_point now);
+    double rate_{};
+    double burst_{};
+    double tokens_{};
+    std::chrono::steady_clock::time_point tokens_at_{};
+    bool tokens_started_{};
     std::deque<Pending> unacked_;
     std::chrono::steady_clock::time_point window_start_{};
     std::size_t window_resends_{};

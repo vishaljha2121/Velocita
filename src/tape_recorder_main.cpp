@@ -75,6 +75,7 @@ int main(int argc, char** argv) {
         c.backoff_cap = std::chrono::milliseconds(kv.number("backoff_cap_ms", 60000));
         c.refresh_every = std::chrono::milliseconds(kv.number("refresh_ms", 15 * 60 * 1000));
         c.resend_after = std::chrono::milliseconds(kv.number("resend_ms", 2000));
+        c.send_bytes_per_second = kv.number("send_bytes_per_second", 32 * 1024);
 
         std::signal(SIGTERM, stop);
         std::signal(SIGINT, stop);
@@ -95,7 +96,8 @@ int main(int argc, char** argv) {
                                     sink.flush();
                                     ++written;
                                     to_ack.push_back(request_of(entry));
-                                });
+                                },
+                                std::size_t{1} << 40, std::size_t{1} << 40);
             reader.start();
             const auto start = std::chrono::steady_clock::now();
             std::optional<std::chrono::steady_clock::time_point> stall_until;
@@ -129,7 +131,8 @@ int main(int argc, char** argv) {
                                     const Party to{Role::voter, v};
                                     link.send(to, sealer.seal_to(to, FrameKind::submit, entry));
                                 }
-                            });
+                            },
+                            c.send_bytes_per_second);
         reader.start();
         std::cerr << "velocita-tape-recorder " << int(c.recorder_id) << " session " << session << " started\n";
         const auto start = std::chrono::steady_clock::now();
