@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <csignal>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -137,6 +138,8 @@ int main(int argc, char** argv) {
         std::cerr << "velocita-tape-recorder " << int(c.recorder_id) << " session " << session << " started\n";
         const auto start = std::chrono::steady_clock::now();
         auto last_report = start;
+        auto last_metrics = start;
+        const std::string metrics_file = kv.find("metrics_file").value_or("");
         while (running) {
             const auto now = std::chrono::steady_clock::now();
             if (run_ms && now - start >= std::chrono::milliseconds(run_ms)) break;
@@ -151,6 +154,22 @@ int main(int argc, char** argv) {
                     submitter.on_ack(s, applied);
             }
             submitter.step(now);
+            if (!metrics_file.empty() && now - last_metrics >= std::chrono::seconds(5)) {
+                last_metrics = now;
+                const auto labels = "recorder=\"" + std::to_string(c.recorder_id) + "\",process=\"recorder\"";
+                std::ostringstream out;
+                out << aeron_metrics(runtime, labels) << "velocita_tape_link_dropped_total{" << labels << "} " << link.dropped()
+                    << "\nvelocita_tape_recorder_frames_total{" << labels << "} " << reader.frames()
+                    << "\nvelocita_tape_recorder_lost_total{" << labels << "} " << reader.lost()
+                    << "\nvelocita_tape_recorder_submitted_total{" << labels << "} " << submitter.next_request() - 1
+                    << "\nvelocita_tape_recorder_unacked{" << labels << "} " << submitter.unacked() << "\n";
+                const auto tmp = metrics_file + ".tmp";
+                {
+                    std::ofstream f(tmp, std::ios::trunc);
+                    f << out.str();
+                }
+                std::rename(tmp.c_str(), metrics_file.c_str());
+            }
             if (now - last_report >= std::chrono::seconds(60)) {
                 last_report = now;
                 std::cerr << "recorder " << int(c.recorder_id) << " frames " << reader.frames() << " lost " << reader.lost()

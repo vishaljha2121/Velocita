@@ -93,4 +93,15 @@ std::int64_t AeronRuntime::offer(aeron::Publication& publication, std::span<cons
     return publication.offer(buffer, 0, static_cast<aeron::util::index_t>(bytes.size()));
 }
 
+constexpr std::int32_t kSystemCounterType = 0;
+
+std::vector<AeronRuntime::Counter> AeronRuntime::system_counters() const {
+    std::vector<Counter> out;
+    auto& reader = aeron_->countersReader();
+    reader.forEach([&](std::int32_t id, std::int32_t type, const aeron::concurrent::AtomicBuffer&, const std::string& label) {
+        if (type == kSystemCounterType) out.push_back({label, reader.getCounterValue(id)});
+    });
+    return out;
+}
+
 }

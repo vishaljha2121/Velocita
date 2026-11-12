@@ -38,6 +38,33 @@ AeronLink::AeronLink(AeronRuntime& runtime, const Endpoint& listen, const std::m
 
 AeronLink::~AeronLink() = default;
 
+std::string aeron_metrics(const AeronRuntime& runtime, const std::string& labels) {
+    static const std::pair<const char*, const char*> kNames[] = {
+        {"Bytes sent", "bytes_sent"},
+        {"Bytes received", "bytes_received"},
+        {"Retransmitted bytes", "retransmitted_bytes"},
+        {"Retransmits sent", "retransmits_sent"},
+        {"NAKs sent", "naks_sent"},
+        {"NAKs received", "naks_received"},
+        {"Heartbeats sent", "heartbeats_sent"},
+        {"Status Messages sent", "status_messages_sent"},
+        {"Sender flow control limits", "back_pressure_events"},
+        {"Short sends", "short_sends"},
+        {"Loss gap fills", "loss_gap_fills"},
+        {"Invalid packets", "invalid_packets"},
+        {"Retransmit Pool Overflow count", "retransmit_pool_overflows"},
+        {"Errors", "errors"},
+    };
+    std::string out;
+    for (const auto& c : runtime.system_counters())
+        for (const auto& [prefix, name] : kNames)
+            if (c.label.rfind(prefix, 0) == 0) {
+                out += "velocita_tape_aeron_" + std::string(name) + "_total{" + labels + "} " + std::to_string(c.value) + "\n";
+                break;
+            }
+    return out;
+}
+
 bool AeronLink::send(const Party& to, std::span<const std::byte> frame) {
     const auto it = publications_.find(to);
     if (it == publications_.end()) return false;

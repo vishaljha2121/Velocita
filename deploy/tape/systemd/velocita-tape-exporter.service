@@ -8,7 +8,7 @@ ExecStart=/usr/bin/podman run --rm --replace --name velocita-tape-exporter \
     --network host --userns=keep-id --read-only --security-opt no-new-privileges --cap-drop all \
     --pids-limit 16 --memory 64m --log-driver journald \
     -v %h/velocita-tape/data:/var/lib/velocita-tape:ro \
-    localhost/velocita-tape:current velocita-tape-exporter 0.0.0.0 45301 /var/lib/velocita-tape/voter/metrics.prom
+    localhost/velocita-tape:current velocita-tape-exporter 0.0.0.0 45301 /var/lib/velocita-tape/voter/metrics.prom /var/lib/velocita-tape/recorder-metrics.prom
 ExecStop=/usr/bin/podman stop -t 5 velocita-tape-exporter
 Restart=on-failure
 RestartSec=5

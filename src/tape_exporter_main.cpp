@@ -1,4 +1,4 @@
-// velocita-tape-exporter: serves a voter's metrics file over HTTP for Prometheus. Reads only; links no tape code.
+// velocita-tape-exporter: serves the tape's metrics files over HTTP for Prometheus. Reads only; links no tape code.
 #include <arpa/inet.h>
 #include <csignal>
 #include <cstdint>
@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -27,11 +28,11 @@ void reply(int fd, const std::string& status, const std::string& body, const std
 }
 
 int main(int argc, char** argv) {
-    if (argc != 4) {
-        std::cerr << "usage: velocita-tape-exporter BIND_ADDRESS PORT METRICS_FILE\n";
+    if (argc < 4) {
+        std::cerr << "usage: velocita-tape-exporter BIND_ADDRESS PORT METRICS_FILE...\n";
         return 64;
     }
-    const std::string file = argv[3];
+    const std::vector<std::string> files(argv + 3, argv + argc);
     const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     const int one = 1;
     ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
@@ -55,9 +56,13 @@ int main(int argc, char** argv) {
         const auto n = ::read(client, request, sizeof(request) - 1);
         const std::string line = n > 0 ? std::string(request, static_cast<std::size_t>(n)) : std::string();
         if (line.rfind("GET /metrics", 0) == 0) {
-            std::ifstream in(file);
-            if (!in) reply(client, "503 Service Unavailable", "metrics file not written yet\n", "text/plain");
-            else reply(client, "200 OK", std::string((std::istreambuf_iterator<char>(in)), {}), "text/plain; version=0.0.4");
+            std::string body;
+            for (const auto& file : files) {
+                std::ifstream in(file);
+                if (in) body.append(std::istreambuf_iterator<char>(in), {});
+            }
+            if (body.empty()) reply(client, "503 Service Unavailable", "metrics files not written yet\n", "text/plain");
+            else reply(client, "200 OK", body, "text/plain; version=0.0.4");
         } else {
             reply(client, "404 Not Found", "only /metrics\n", "text/plain");
         }

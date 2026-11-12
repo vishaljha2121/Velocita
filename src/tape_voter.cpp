@@ -371,6 +371,7 @@ void Voter::write_state_page(std::int64_t utc_ns) const {
           << static_cast<double>(s.max_silence_ns[stream_id(Channel::depth, i)]) / 1e9 << "\n";
         m << "velocita_tape_book_position{" << log << ",symbol=\"" << sym << "\"} " << b.position << "\n";
     }
+    if (extra_metrics_) m << extra_metrics_();
     atomic_write(config_.replica.data_dir / "metrics.prom", m.str());
 }
 

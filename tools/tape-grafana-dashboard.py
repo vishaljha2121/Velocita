@@ -154,6 +154,47 @@ series("Free disk per host", [target('min by (host) (node_filesystem_avail_bytes
        "Root filesystem space left. The tape's log grows about 300 MB a day.", 16, 42, w=8, unit="bytes",
        overrides=machine_overrides)
 
+def process_overrides():
+    out = []
+    for m, c in MACHINES.items():
+        out.append(name_color(f"{m} voter", c))
+        rec = name_color(f"{m} recorder", c)
+        rec["properties"].append({"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 6]}})
+        out.append(rec)
+    return out
+
+
+row("Aeron transport (what the tape itself puts on the wire)", 50)
+series("Aeron bytes sent",
+       [target("sum by (host, process) (rate(velocita_tape_aeron_bytes_sent_total[1m]))", "{{host}} {{process}}")],
+       "Bytes each tape process handed to the network, including retransmissions. Solid: voter. Dashed: recorder.",
+       0, 51, w=8, unit="Bps", overrides=process_overrides())
+series("Tape share of Tailscale send",
+       [target('sum by (host) (rate(velocita_tape_aeron_bytes_sent_total[1m])) / on (host) '
+               'rate(node_network_transmit_bytes_total{device="tailscale0"}[1m])', "{{host}}")],
+       "Fraction of each host's tailnet traffic that came from the tape. Near 1 during a flood means the tape is the sender; "
+       "near 0 means something else is.", 8, 51, w=8, unit="percentunit", overrides=machine_overrides, decimals=0)
+series("Retransmitted bytes",
+       [target("sum by (host, process) (rate(velocita_tape_aeron_retransmitted_bytes_total[1m]))", "{{host}} {{process}}")],
+       "Bytes Aeron sent again because a receiver reported loss. Spikes here mean the Wi-Fi dropped packets.",
+       16, 51, w=8, unit="Bps", overrides=process_overrides())
+series("NAKs received",
+       [target("sum by (host, process) (rate(velocita_tape_aeron_naks_received_total[1m])) * 60", "{{host}} {{process}}")],
+       "Loss reports from receivers, per minute. Each one can trigger a retransmission.", 0, 59, w=8, unit="short",
+       overrides=process_overrides())
+series("Transport trouble per 10 minutes",
+       [target("sum by (host) (increase(velocita_tape_aeron_back_pressure_events_total[10m]))", "{{host}} back-pressure", "A"),
+        target("sum by (host) (increase(velocita_tape_link_dropped_total[10m]))", "{{host}} dropped sends", "B"),
+        target("sum by (host) (increase(velocita_tape_aeron_loss_gap_fills_total[10m]))", "{{host}} gap fills", "C"),
+        target("sum by (host) (increase(velocita_tape_aeron_errors_total[10m]))", "{{host}} errors", "D")],
+       "Back-pressure (a peer not keeping up), sends the tape dropped because Aeron refused them, gaps Aeron gave up on, "
+       "and driver errors.", 8, 59, w=8, unit="short")
+series("Recorder frames received per second",
+       [target("rate(velocita_tape_recorder_frames_total[2m])", "{{host}} recorder")],
+       "Frames each recorder's WebSocket delivered, before anything reaches the tape. Compare with "
+       "\"Observations committed per recorder\" to see whether frames are lost on the way in.", 16, 59, w=8, unit="short",
+       overrides=process_overrides(), decimals=2)
+
 dashboard = {
     "uid": "velocita-tape", "title": "Verifiable tape", "tags": ["velocita", "tape"], "timezone": "utc",
     "editable": False, "graphTooltip": 1, "refresh": "10s", "schemaVersion": 39,

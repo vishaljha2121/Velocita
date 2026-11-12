@@ -69,6 +69,11 @@ int main(int argc, char** argv) {
         AeronLink link(runtime, Endpoint::parse(kv.get("listen")), destinations);
         LinkNetwork network(link);
         Voter voter(c, network);
+        const auto labels = "node=\"" + std::to_string(c.replica.node_id) + "\",process=\"voter\"";
+        voter.set_extra_metrics([&runtime, &link, labels] {
+            return aeron_metrics(runtime, labels) + "velocita_tape_link_dropped_total{" + labels + "} " +
+                   std::to_string(link.dropped()) + "\n";
+        });
         std::cerr << "velocita-tape-voter " << c.replica.node_id << " incarnation " << c.incarnation << " started\n";
         const auto start = std::chrono::steady_clock::now();
         while (running) {

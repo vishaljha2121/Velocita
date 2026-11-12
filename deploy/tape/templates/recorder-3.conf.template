@@ -12,3 +12,4 @@ voter.1=100.72.127.102:45101
 voter.2=100.84.151.116:45102
 voter.3=100.85.36.22:45103
 send_bytes_per_second=32768
+metrics_file=/var/lib/velocita-tape/recorder-metrics.prom

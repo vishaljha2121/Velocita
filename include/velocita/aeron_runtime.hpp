@@ -14,6 +14,7 @@ extern "C" {
 #include <memory>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace velocita {
 
@@ -31,6 +32,12 @@ public:
         const std::string& channel, std::int32_t stream_id,
         std::chrono::milliseconds timeout = std::chrono::seconds(10));
     static std::int64_t offer(aeron::Publication& publication, std::span<const std::byte> bytes);
+
+    struct Counter {
+        std::string label;
+        std::int64_t value{};
+    };
+    [[nodiscard]] std::vector<Counter> system_counters() const;
 
 private:
     aeron_driver_context_t* driver_context_{};

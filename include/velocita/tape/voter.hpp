@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <deque>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -54,6 +55,7 @@ public:
     [[nodiscard]] std::uint64_t refused_submissions() const noexcept { return refused_; }
     [[nodiscard]] std::uint64_t opened_frames() const noexcept { return opened_; }
     [[nodiscard]] std::uint64_t rejected_frames() const noexcept { return rejected_; }
+    void set_extra_metrics(std::function<std::string()> extra) { extra_metrics_ = std::move(extra); }
 
 private:
     void handle_submission(const Party& from, std::vector<std::byte> bytes);
@@ -62,6 +64,7 @@ private:
     void after_apply();
     void send_acks();
     void write_state_page(std::int64_t utc_ns) const;
+    std::function<std::string()> extra_metrics_;
     void broadcast_submission(std::span<const std::byte> bytes);
     void publish_head(std::uint64_t tick);
 

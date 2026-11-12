@@ -1669,6 +1669,902 @@
     "type": "prometheus",
     "uid": "velocita-tape-prometheus"
    }
+  },
+  {
+   "id": 23,
+   "type": "row",
+   "title": "Aeron transport (what the tape itself puts on the wire)",
+   "collapsed": false,
+   "gridPos": {
+    "w": 24,
+    "h": 1,
+    "x": 0,
+    "y": 50
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Aeron bytes sent",
+   "description": "Bytes each tape process handed to the network, including retransmissions. Solid: voter. Dashed: recorder.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (host, process) (rate(velocita_tape_aeron_bytes_sent_total[1m]))",
+     "legendFormat": "{{host}} {{process}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "Bps",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1 voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1 recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2 voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2 recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 24,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 0,
+    "y": 51
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Tape share of Tailscale send",
+   "description": "Fraction of each host's tailnet traffic that came from the tape. Near 1 during a flood means the tape is the sender; near 0 means something else is.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (host) (rate(velocita_tape_aeron_bytes_sent_total[1m])) / on (host) rate(node_network_transmit_bytes_total{device=\"tailscale0\"}[1m])",
+     "legendFormat": "{{host}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 25,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 8,
+    "y": 51
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Retransmitted bytes",
+   "description": "Bytes Aeron sent again because a receiver reported loss. Spikes here mean the Wi-Fi dropped packets.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (host, process) (rate(velocita_tape_aeron_retransmitted_bytes_total[1m]))",
+     "legendFormat": "{{host}} {{process}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "Bps",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1 voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1 recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2 voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2 recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 26,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 16,
+    "y": 51
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "NAKs received",
+   "description": "Loss reports from receivers, per minute. Each one can trigger a retransmission.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (host, process) (rate(velocita_tape_aeron_naks_received_total[1m])) * 60",
+     "legendFormat": "{{host}} {{process}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1 voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1 recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2 voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2 recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 27,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 0,
+    "y": 59
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Transport trouble per 10 minutes",
+   "description": "Back-pressure (a peer not keeping up), sends the tape dropped because Aeron refused them, gaps Aeron gave up on, and driver errors.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (host) (increase(velocita_tape_aeron_back_pressure_events_total[10m]))",
+     "legendFormat": "{{host}} back-pressure",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "sum by (host) (increase(velocita_tape_link_dropped_total[10m]))",
+     "legendFormat": "{{host}} dropped sends",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    },
+    {
+     "refId": "C",
+     "expr": "sum by (host) (increase(velocita_tape_aeron_loss_gap_fills_total[10m]))",
+     "legendFormat": "{{host}} gap fills",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    },
+    {
+     "refId": "D",
+     "expr": "sum by (host) (increase(velocita_tape_aeron_errors_total[10m]))",
+     "legendFormat": "{{host}} errors",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": []
+   },
+   "id": 28,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 8,
+    "y": 59
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Recorder frames received per second",
+   "description": "Frames each recorder's WebSocket delivered, before anything reaches the tape. Compare with \"Observations committed per recorder\" to see whether frames are lost on the way in.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "rate(velocita_tape_recorder_frames_total[2m])",
+     "legendFormat": "{{host}} recorder",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     },
+     "decimals": 2
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1 voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1 recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2 voter"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2 recorder"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          10,
+          6
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 29,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 16,
+    "y": 59
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
   }
  ]
 }
