@@ -214,14 +214,31 @@ class ReportTests(unittest.TestCase):
     def test_cadence_and_silences(self):
         sc = Script()
         sc.snapshot(10, 0, [("100.00", "2", "1")], [("100.10", "3", "1")])
-        for seq, at in zip((10, 11, 12, 13), (0, 1000, 2100, 35000)):
-            sc.depth((1, 2, 3), "UPDATE", seq, [at * MS + 5 * MS] * 3, bids=[(f"100.0{seq - 9}", "1", "1")])
-            sc.tick(at * MS + 10 * MS, count=6)
+        updates = dict(zip((5, 1005, 2105, 35005), (10, 11, 12, 13)))
+        for ms in range(0, 42000, 5):
+            if ms in updates:
+                seq = updates[ms]
+                sc.depth((1, 2, 3), "UPDATE", seq, [ms * MS] * 3, bids=[(f"100.0{seq - 9}", "1", "1")])
+            if ms % 1000 == 500:
+                sc.tick(ms * MS)
         write_segment(self.base, 1000, sc.entries, self.keys)
         b = report(self.base, self.keys, self.tmp / "out")["books"][SYM]
         self.assertEqual(b["cadence_ms"]["longest"], 32900)
         self.assertEqual(b["silences_over_30s"], 1)
         self.assertEqual(b["cadence_ms"]["p50"], 1100)
+
+    def test_a_silence_across_a_tape_outage_is_not_counted(self):
+        sc = Script()
+        sc.snapshot(10, 0, [("100.00", "2", "1")], [("100.10", "3", "1")])
+        sc.depth((1, 2, 3), "UPDATE", 10, [SEC] * 3, bids=[("100.01", "1", "1")])
+        sc.tick(SEC + 10 * MS, count=6)
+        sc.depth((1, 2, 3), "UPDATE", 11, [300 * SEC] * 3, bids=[("100.02", "1", "1")])
+        sc.tick(300 * SEC + 10 * MS, count=6)
+        write_segment(self.base, 1000, sc.entries, self.keys)
+        s = report(self.base, self.keys, self.tmp / "out")
+        self.assertTrue(any(g["seconds"] > 250 for g in s["coverage"]["gaps"]))
+        self.assertEqual(s["books"][SYM]["silences_over_30s"], 0)
+        self.assertIsNone(s["books"][SYM]["cadence_ms"]["longest"])
 
     def test_gap_between_segments_is_not_counted_as_recorded(self):
         a = write_segment(self.base, 1000, basic_script().entries, self.keys)
@@ -234,6 +251,18 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(s["coverage"]["segments_used"], 2)
         self.assertTrue(any(g["seconds"] > 590 for g in s["coverage"]["gaps"]))
         self.assertLess(s["coverage"]["recorded_hours"] * 3600, 30)
+
+    def test_segments_are_ordered_by_time_not_by_incarnation_number(self):
+        a = write_segment(self.base, 68934737119228, basic_script().entries, self.keys)
+        s2 = Script(t0=1_794_513_600 * SEC + 30 * SEC)
+        h = last_head(a)
+        s2.entries.insert(0, E.segment_start(68934737119228, h["tick"], h["tree_size"], bytes.fromhex(h["root"])))
+        s2.snapshot(20, 0, [("100.00", "2", "1")], [("100.10", "3", "1")])
+        s2.tick(0, count=6)
+        write_segment(self.base, 1794513600, s2.entries, self.keys)
+        seg = report(self.base, self.keys, self.tmp / "out")["segments"]
+        self.assertEqual([(x["incarnation"], x["status"]) for x in seg], [(68934737119228, "used"), (1794513600, "used")])
+        self.assertEqual(seg[1]["linked_to"], 68934737119228)
 
     def test_link_to_the_wrong_head_excludes_the_segment(self):
         a = write_segment(self.base, 1000, basic_script().entries, self.keys)

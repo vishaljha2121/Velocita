@@ -514,3 +514,20 @@ connections. That points to a disk or root-filesystem fault and needs physical a
 watchdogs on NUC1 and the Pi tripped again (1.2 to 1.8 MB/s), so the tape is in a 20-minute cool-down. The
 archive's only complete copy is on NUC2; NUC1 and the Pi keep their newest two segments. `docs/tape/TEST_MAP.md`
 maps all 92 ADR test cases to tests: 49 covered, 22 partly, 21 not covered.
+
+**D-62. First real report: 13.8 hours, two linked segments.** NUC2 came back on Tailscale but its sshd and node
+exporter still failed, so the report ran on the Mac over NUC1's archive copy (60 MB, copied at 500 KB/s,
+every file checksum-matched against NUC1), using the native verifier at the same commit; Docker Desktop could
+not see freshly created directories, so the containerised verifier was not used. The Pi's copy was not
+suitable: it was crash-looping near the end of the pre-rotation segment, so its log stops short of the head
+the next segment links to. Running it found three bugs, each fixed with a test: segments were ordered by
+incarnation number, so the pre-rotation segment (a random number) sorted last and failed its link; silences
+were measured across tape outages (every book's "longest silence" was the 3.8-hour stop); and a silence
+test without continuous ticks was unrealistic. Results (aggregates): 289,636 update verdicts, 91.0% identical
+at all three recorders, none divergent; arrival spread p50 19 ms, p90 43 ms, p99 289 ms, clock error bound
+3.9 ms; DEPTH update gap median about 1.0 s on ten of twelve books (2.0 s on AMZNC and TSLAC); hundreds of
+silences over 30 s on quiet books, so the docs' 30 s rule would declare healthy connections dead without
+heartbeats; market-hours spreads of 0.03 to 4.4 bp with top-of-book sizes of 0.005 to 0.22 shares, against
+8 to 17 bp off-hours, and the rebuilt tops agree with the exchange's own best bid and offer (at most 5
+mismatches per book). The 1-of-3 count (18,800) is concentrated in the morning's instability (the Pi's crash
+loop and the pre-fix refresh race); a per-period breakdown would show it.

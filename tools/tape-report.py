@@ -69,25 +69,32 @@ class Report:
         self.covered_seconds = 0.0
         self.coverage_gaps = []
         self.prev_tick_utc = None
+        self.outages = []
 
     def fold(self, rows_path):
         last_tick_utc = self.prev_tick_utc
         first_tick_utc = None
         with open(rows_path) as f:
             for line in f:
+                if not line.startswith("T\t"):
+                    continue
+                utc = int(line.rstrip("\n").split("\t")[3])
+                if first_tick_utc is None:
+                    first_tick_utc = utc
+                if last_tick_utc is not None:
+                    delta = (utc - last_tick_utc) / 1e9
+                    if 0 < delta <= GAP_SECONDS:
+                        self.covered_seconds += delta
+                    elif delta > GAP_SECONDS:
+                        self.coverage_gaps.append({"from_utc": iso(last_tick_utc), "seconds": round(delta, 1)})
+                        self.outages.append((last_tick_utc, utc))
+                last_tick_utc = utc
+        with open(rows_path) as f:
+            for line in f:
                 r = line.rstrip("\n").split("\t")
                 kind = r[0]
                 if kind == "T":
-                    utc = int(r[3])
-                    if first_tick_utc is None:
-                        first_tick_utc = utc
-                    if last_tick_utc is not None:
-                        delta = (utc - last_tick_utc) / 1e9
-                        if 0 < delta <= GAP_SECONDS:
-                            self.covered_seconds += delta
-                        elif delta > GAP_SECONDS:
-                            self.coverage_gaps.append({"from_utc": iso(last_tick_utc), "seconds": round(delta, 1)})
-                    last_tick_utc = utc
+                    continue
                 elif kind == "O":
                     err = int(r[8])
                     if err == UNKNOWN_CLOCK:
@@ -112,7 +119,9 @@ class Report:
                         self.spread_ms[(max(times) - min(times)) // 1_000_000] += 1
                     if channel == "DEPTH" and times:
                         first = min(times)
-                        if book.last_first_arrival is not None and first > book.last_first_arrival:
+                        spans_outage = book.last_first_arrival is not None and any(
+                            s < first and e > book.last_first_arrival for s, e in self.outages)
+                        if book.last_first_arrival is not None and first > book.last_first_arrival and not spans_outage:
                             gap_ms = (first - book.last_first_arrival) // 1_000_000
                             book.cadence_ms[gap_ms] += 1
                             book.longest_silence_ms = max(book.longest_silence_ms, gap_ms)
@@ -189,20 +198,27 @@ def head_file(seg, tick):
     return seg / "heads" / f"head-{tick}.json"
 
 
+def first_tick_utc(rows):
+    with open(rows) as f:
+        for line in f:
+            if line.startswith("T\t"):
+                return int(line.rstrip("\n").split("\t")[3])
+    return None
+
+
 def run(args):
     report = Report()
-    segments = sorted((p for p in args.segments.iterdir() if p.is_dir() and p.name.isdigit()), key=lambda p: int(p.name))
-    segments = [s for s in segments if (args.since is None or int(s.name) >= args.since) and (args.until is None or int(s.name) <= args.until)]
-    previous_used = None
+    segments = [p for p in args.segments.iterdir() if p.is_dir() and p.name.isdigit()]
     scratch_root = Path(tempfile.mkdtemp(prefix="tape-report-", dir=args.scratch))
     try:
-        for seg in segments:
+        verified = []
+        for seg in sorted(segments, key=lambda p: p.name):
             incarnation = int(seg.name)
             entry = {"incarnation": incarnation, "status": "excluded"}
-            report.segments.append(entry)
             scratch = scratch_root / seg.name
             scratch.mkdir()
             wal = scratch / "wal.log"
+            rows = scratch / "rows.tsv"
             try:
                 if (seg / "wal.log.gz").exists():
                     with gzip.open(seg / "wal.log.gz", "rb") as src, open(wal, "wb") as dst:
@@ -211,33 +227,39 @@ def run(args):
                     shutil.copyfile(seg / "wal.log", wal)
                 else:
                     entry["reason"] = "no log"
-                    continue
             except (OSError, EOFError) as e:
                 entry["reason"] = f"log unreadable: {e.__class__.__name__}"
-                continue
-            rows = scratch / "rows.tsv"
-            cmd = args.verify + ["--wal", str(wal), "--heads", str(seg / "heads"), "--incarnation", str(incarnation),
-                                 "--head-every", str(args.head_every), "--extract", str(rows)]
-            for k in args.key:
-                cmd += ["--key", str(k)]
-            out = subprocess.run(cmd, capture_output=True, text=True)
-            last = out.stdout.strip().splitlines()[-1] if out.stdout.strip() else "{}"
-            try:
-                result = json.loads(last)
-            except ValueError:
-                result = {}
-            if out.returncode != 0 or not result.get("ok"):
-                entry["reason"] = "verify failed" + (f": {result.get('check')}" if result.get("check") else "")
-                continue
-            if result.get("heads_verified", 0) < 1:
-                entry["reason"] = "no signed head"
+            result = {}
+            if "reason" not in entry:
+                cmd = args.verify + ["--wal", str(wal), "--heads", str(seg / "heads"), "--incarnation", str(incarnation),
+                                     "--head-every", str(args.head_every), "--extract", str(rows)]
+                for k in args.key:
+                    cmd += ["--key", str(k)]
+                out = subprocess.run(cmd, capture_output=True, text=True)
+                wal.unlink(missing_ok=True)
+                last = out.stdout.strip().splitlines()[-1] if out.stdout.strip() else "{}"
+                try:
+                    result = json.loads(last)
+                except ValueError:
+                    result = {}
+                if out.returncode != 0 or not result.get("ok"):
+                    detail = result.get("check") or result.get("error") or (out.stderr.strip().splitlines() or [""])[-1]
+                    entry["reason"] = "verify failed" + (f": {detail[:120]}" if detail else "")
+                elif result.get("heads_verified", 0) < 1:
+                    entry["reason"] = "no signed head"
+            start_utc = first_tick_utc(rows) if "reason" not in entry else None
+            verified.append((start_utc, seg, entry, result, rows))
+        verified.sort(key=lambda v: (v[0] is None, v[0] or 0, v[1].name))
+        previous_used = None
+        for start_utc, seg, entry, result, rows in verified:
+            report.segments.append(entry)
+            if "reason" in entry:
                 continue
             link = result.get("previous_segment")
             if previous_used is not None:
-                prev_seg, _ = previous_used
                 ok = False
-                if link and link.get("incarnation") == int(prev_seg.name):
-                    hf = head_file(prev_seg, link.get("tick"))
+                if link and link.get("incarnation") == int(previous_used.name):
+                    hf = head_file(previous_used, link.get("tick"))
                     if hf.exists():
                         h = json.loads(hf.read_text())
                         ok = (h.get("tick") == link["tick"] and h.get("tree_size") == link["tree_size"]
@@ -246,6 +268,7 @@ def run(args):
                     entry["reason"] = "link"
                     continue
             first_utc, last_utc = report.fold(rows)
+            rows.unlink(missing_ok=True)
             heads = sorted(int(p.stem[5:]) for p in (seg / "heads").glob("head-*.json"))
             last_head = json.loads(head_file(seg, heads[-1]).read_text()) if heads else {}
             entry.update({"status": "used", "entries": result.get("entries"), "last_head_tick": last_head.get("tick"),
@@ -253,8 +276,7 @@ def run(args):
                           "heads_verified": result.get("heads_verified"),
                           "first_tick_utc": iso(first_utc) if first_utc else None, "last_tick_utc": iso(last_utc) if last_utc else None,
                           "linked_to": link.get("incarnation") if link else None})
-            previous_used = (seg, entry)
-            shutil.rmtree(scratch, ignore_errors=True)
+            previous_used = seg
     finally:
         shutil.rmtree(scratch_root, ignore_errors=True)
     return report.summary()
@@ -336,8 +358,6 @@ def main():
     p.add_argument("--verify", required=True, help="command that runs velocita-tape-verify, as one shell-quoted string")
     p.add_argument("--key", type=Path, action="append", required=True)
     p.add_argument("--head-every", type=int, default=60)
-    p.add_argument("--since", type=int)
-    p.add_argument("--until", type=int)
     p.add_argument("--scratch", type=Path, default=None)
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args()
