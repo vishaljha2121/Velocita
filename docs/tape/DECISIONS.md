@@ -355,3 +355,16 @@ both hashes match the originals' rules; `archived_at_ns` is the original file ti
 then runs only the job's own `prune()` and `remove_old_archives()` under its lock. The tooling is in
 `~/.cache/velocita-md-repair`. It is paused with the market-data recorder (D-44); uploads must be
 rate-limited (`scp -l`) so they cannot flood the Wi-Fi.
+
+**D-46. First 100 minutes under the ceilings, and two findings.** From 01:35 to 03:15 UTC the tape held
+one leader except for a single election (term 54 to 55), kept ticks in real time, published 119 signed
+heads that verify on every host with all three signatures, and kept 12 of 12 books valid with none
+divergent; hosts sent 11 to 25 KB/s and no watchdog tripped. The election coincided with my offline
+verification copy: pulling the logs to the Mac drove the Pi's send to 630 KB/s even at a 1 MB/s scp
+limit, and that copy then stalled for 81 minutes. Verification now runs in place on each host with the
+verifier inside the image, and the head files are compared across hosts, so nothing large crosses the
+Wi-Fi. Second finding: the Pi's recorder receives about 60% of the frames the NUCs receive (16,686 against
+23,289 over the same period) with no sequence gaps, no ring loss and nothing unacknowledged, so roughly a
+third of updates close 2 of 3 and some Pi copies arrive after the verdict closes (585 late copies). The
+tape records this as designed; why the Pi's feed connection carries fewer frames is open (next: compare
+per-channel frame counts between the Pi and a NUC).

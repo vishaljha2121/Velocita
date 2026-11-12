@@ -126,4 +126,12 @@ client), exporter, offline verifier, key tool. Results:
 Cut line used: the replica is new and compact (D-05), compaction is deferred (D-07, which also defers
 RAFT-5.1's snapshot half), and hardware is a release bundle plus owner commands (D-33), because NUC1's disk
 is full and the Pi is under the build floor. Amendment 2 to ADR 0030 (verdict keys, D-13/D-25/D-26) is
-implemented and was approved by the owner on 2026-11-11. Next: `RUNBOOK.md` steps 0 to 3.
+implemented and was approved by the owner on 2026-11-12.
+
+## Status: live (2026-11-12)
+
+The tape runs on NUC1, the Pi and NUC2 (incarnation 68934737119228, image de7bac0). Going live surfaced
+three defects no local run could: the Pi's head signature was never published (D-40), and the tape's
+resends amplified Wi-Fi loss into floods, first through log replication (D-42) and then through every
+resend path under partition (D-43). Each is fixed with a test and a mutant; the mutation suite now
+kills 33 of 33. Paper trading and the market-data recorder are paused by the owner (D-44).

@@ -115,6 +115,15 @@ Add `deploy/tape/templates/prometheus-tape.yml` to the Prometheus scrape configs
 three `commit_index` within a few entries, 12 books `valid`, update verdicts mostly 3/3, divergent 0, a signed head
 every 60 seconds.
 
+Verify in place on each host while the tape runs (D-46; no large copies over the Wi-Fi):
+
+```sh
+ssh HOST 'cp velocita-tape/data/voter/wal.log /tmp/wal.log && podman run --rm --network none --userns=keep-id --read-only \
+    -v /tmp/wal.log:/w/wal.log:ro -v $HOME/velocita-tape/data/voter/heads:/w/heads:ro -v $HOME/velocita-tape/config/public:/k:ro \
+    localhost/velocita-tape:current velocita-tape-verify --wal /w/wal.log --heads /w/heads --incarnation INCARNATION \
+    --head-every 60 --key /k/head-1.pub.pem --key /k/head-2.pub.pem --key /k/head-3.pub.pem | tail -1; rm /tmp/wal.log'
+```
+
 ## 5. Unplug drill
 
 ```sh
