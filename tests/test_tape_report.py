@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 import zlib
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -312,6 +313,46 @@ class ReportTests(unittest.TestCase):
         self.assertEqual((after["updates"]["3/3"], after["updates"]["closed"]), (1, 1))
         self.assertEqual(after["arrival_spread_ms"]["p50"], 80)
         self.assertAlmostEqual(before["recorded_minutes"] + after["recorded_minutes"], 10 / 60, places=1)
+
+    def test_trades_are_checked_against_the_book(self):
+        def trade(seq, side, price, qty):
+            return json.dumps({"seqnum": str(seq), "channel": "TRADE", "update": "UPDATE",
+                               "data": {"match_id": str(seq), "taking_side": side, "symbol": SYM,
+                                        "info": {"price": price, "qty": qty, "timestamp": "1"}}}, separators=(",", ":")).encode()
+        sc = Script()
+        sc.snapshot(10, 0, [("100.00", "2", "1")], [("100.10", "3", "1")])
+        events = {
+            2000: ("trade", (1, 2, 3), 1, "BUY", "100.10", "1"),
+            2500: ("depth", 10, [], [("100.10", "2", "1")]),
+            4600: ("depth", 11, [("100.00", "1.5", "1")], []),
+            5000: ("trade", (1,), 2, "SELL", "100.00", "0.5"),
+            8000: ("trade", (1,), 3, "BUY", "100.10", "1"),
+            14000: ("depth", 12, [], [("100.10", "1", "1")]),
+            20000: ("trade", (1,), 4, "BUY", "100.10", "1"),
+            25000: ("trade", (1,), 5, "SELL", "99.90", "0.1"),
+        }
+        for ms in range(0, 30000, 100):
+            ev = events.get(ms)
+            if ev and ev[0] == "trade":
+                for r in ev[1]:
+                    sc.obs(r, "TRADE", "UPDATE", ev[2], trade(ev[2], ev[3], ev[4], ev[5]), ms * MS + r * MS)
+            elif ev:
+                sc.depth((1, 2, 3), "UPDATE", ev[1], [ms * MS] * 3, bids=ev[2], asks=ev[3])
+            if ms % 1000 == 500:
+                sc.tick(ms * MS)
+        write_segment(self.base, 1000, sc.entries, self.keys)
+        s = report(self.base, self.keys, self.tmp / "out")
+        t = s["books"][SYM]["trades"]
+        self.assertEqual(t["count"], 5)
+        self.assertEqual(t["position"], {"inside": 0, "touch": 4, "outside": 1, "no_book": 0})
+        self.assertEqual(t["class"], {"consistent": 2, "late": 1, "unexplained": 2})
+        self.assertEqual(t["accounted_delay_ms"]["p50"], 499)
+        self.assertAlmostEqual(t["outside_bp"]["max"], 10.0, delta=0.02)
+        self.assertEqual(s["trades"]["class"]["consistent"], 2)
+        by_hour = Counter()
+        for period in s["periods"]:
+            by_hour.update(period["trades"])
+        self.assertEqual(dict(by_hour), {"consistent": 2, "late": 1, "unexplained": 2})
 
     def test_the_summary_is_reproducible_and_cites_each_head(self):
         a = write_segment(self.base, 1000, basic_script().entries, self.keys)

@@ -73,3 +73,33 @@ rows and the logs.
 All three recorders sit on one home network, so this measures delivery to one location, and arrival spread
 includes our Wi-Fi. Only the no-login tier (1 s batching) is measured. The 1-of-3 counts mostly reflect our own
 incidents, which is why the hourly view matters more than the overall share.
+
+## Trade consistency (checker added after the first run)
+
+For each trade print, counted once across the three recorders, the report now asks whether the book changed the
+way the trade implies: within 3 s before to 10 s after the print, does a DEPTH change on the resting side, at the
+trade price, remove at least the trade's size? Consistent within 3 s, late within 10 s, otherwise unexplained.
+
+| Measure | Value |
+|---|---|
+| Trades | 221 |
+| Consistent / late / unexplained | 187 (85%) / 4 / 30 |
+| Delay from print to the matching DEPTH change | median 0 ms, p90 about 1 s; on most books −1 ms, so the DEPTH change usually arrives about a millisecond before the trade print (same batch, DEPTH first) |
+| Position at print | 91 inside the spread, 107 at the touch, 23 outside |
+
+The 91 "inside the spread" trades are mostly consistent: the DEPTH change that consumed the level arrived just
+before the print, so by then the book's spread had already moved past the trade price.
+
+**Unexplained trades by period.** 12 of the 30 fall in the overnight hours before the recorder fix, where the
+book itself may be stale. The other 18 fall in US market hours (about 11% of the 159 trades then). In the
+16:00 segment, 12 of its 14 unexplained trades were at a price that never appeared as a level on the resting
+side of the published book, while other levels on that side shrank; in the other 2 the level grew rather than
+shrank.
+
+**Open questions for True Markets.** Is a TRADE price per fill, or one price per taker order (an average when an
+order sweeps several levels)? Can an order rest and fill within one publishing interval without ever appearing in
+DEPTH? Either would explain these trades without anything being wrong.
+
+**Limits of the rule.** New orders joining a level can mask a fill (the level shrinks by less than the trade);
+one DEPTH change may account for several trades at the same level; and the rule needs the trade price to be a
+level price, which the first open question may rule out.

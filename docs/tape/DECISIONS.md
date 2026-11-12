@@ -539,3 +539,13 @@ every clean hour is 98.7 to 100% identical at all three recorders; each shortfal
 `FINDINGS-2026-11-12-report.md` records this, the book-shape result, and a hand analysis of the 23 trades flagged
 outside the book (7 overnight before the recorder fix, likely our stale book; 16 later, mostly one to three price
 ticks, consistent with TRADE and DEPTH being batched separately), with open questions for True Markets.
+
+**D-64. Trade-consistency checker.** The verifier's extract mode now writes, for each first copy of a trade
+print, its side, price, size and the rebuilt book at that instant (row `X`), and, for every DEPTH observation, the
+level changes it made to the reducer's own book (row `L`, diffed before and after the voters' reducer applies
+it, so held and reordered updates are handled exactly as the cluster handles them). The report matches each trade
+to a resting-side change at its price that removes at least its size (3 s before to 10 s after the print) and
+classes it consistent, late or unexplained, per book and per hour. Test: `test_trades_are_checked_against_the_book`
+(five scripted trades covering each class, a copy delivered by all three recorders, an early DEPTH change and an
+outside print); removing the before-the-print match makes it fail. On the archive: 221 trades, 187 consistent,
+4 late, 30 unexplained (12 overnight before the recorder fix); findings in FINDINGS-2026-11-12-report.md.

@@ -21,6 +21,11 @@ OUTCOMES = ["3/3", "2/3", "1/3", "divergent"]
 EVENTS = ["gap", "resubscribe", "reconnect", "dead_connection", "overflow", "regression"]
 GAP_SECONDS = 5.0
 DEAD_SECONDS = 30.0
+MATCH_BEFORE_NS = 3 * 1_000_000_000
+CONSISTENT_NS = 3 * 1_000_000_000
+LATE_NS = 10 * 1_000_000_000
+TRADE_CLASSES = ["consistent", "late", "unexplained"]
+TRADE_POSITIONS = ["inside", "touch", "outside", "no_book"]
 
 
 def percentile(hist, q):
@@ -57,6 +62,12 @@ class Book:
         self.top_bid = Counter()
         self.top_ask = Counter()
         self.last_top = None
+        self.trade_class = Counter()
+        self.trade_position = Counter()
+        self.trade_delay_ms = Counter()
+        self.outside_bp = Counter()
+        self.pending = []
+        self.recent = []
 
 
 class Report:
@@ -70,7 +81,7 @@ class Report:
         self.coverage_gaps = []
         self.prev_tick_utc = None
         self.outages = []
-        self.periods = defaultdict(lambda: {"outcomes": Counter(), "spread_ms": Counter(), "recorded": 0.0})
+        self.periods = defaultdict(lambda: {"outcomes": Counter(), "spread_ms": Counter(), "recorded": 0.0, "trades": Counter()})
 
     def fold(self, rows_path):
         last_tick_utc = self.prev_tick_utc
@@ -137,10 +148,72 @@ class Report:
                         book.last_first_arrival = first if book.last_first_arrival is None else max(book.last_first_arrival, first)
                 elif kind == "B":
                     self.fold_top(r)
+                elif kind == "X":
+                    self.fold_trade(r)
+                elif kind == "L":
+                    self.fold_level(r)
         for book in self.books.values():
             book.last_top = None
+            for trade in book.pending:
+                self.classify(book, trade, "unexplained")
+            book.pending = []
+            book.recent = []
         self.prev_tick_utc = last_tick_utc
         return first_tick_utc, last_tick_utc
+
+    @staticmethod
+    def matches(trade, side, price, old, new):
+        reduction = old - new
+        return side == trade["passive"] and price == trade["price"] and old > 0 and (reduction >= trade["qty"] or new == 0)
+
+    def classify(self, book, trade, cls):
+        book.trade_class[cls] += 1
+        self.periods[trade["utc"] // 3_600_000_000_000]["trades"][cls] += 1
+
+    def account(self, book, trade, delay_ns):
+        self.classify(book, trade, "consistent" if abs(delay_ns) <= CONSISTENT_NS else "late")
+        book.trade_delay_ms[delay_ns // 1_000_000] += 1
+
+    def fold_trade(self, r):
+        symbol, utc, side = r[2], int(r[4]), r[5]
+        price, qty = int(r[6]), int(r[7])
+        book = self.books[symbol]
+        if r[8] == "-" or r[9] == "-":
+            book.trade_position["no_book"] += 1
+        else:
+            bid, ask = int(r[8]), int(r[9])
+            if bid < price < ask:
+                book.trade_position["inside"] += 1
+            elif price == bid or price == ask:
+                book.trade_position["touch"] += 1
+            else:
+                book.trade_position["outside"] += 1
+                distance = (bid - price) if price < bid else (price - ask)
+                book.outside_bp[round(distance / ((bid + ask) / 2) * 1e4, 2)] += 1
+        trade = {"utc": utc, "price": price, "qty": qty, "passive": "A" if side == "B" else "B" if side == "S" else "?"}
+        book.recent = [c for c in book.recent if c[0] >= utc - MATCH_BEFORE_NS]
+        for c in book.recent:
+            if self.matches(trade, *c[1:]):
+                self.account(book, trade, c[0] - utc)
+                return
+        book.pending.append(trade)
+
+    def fold_level(self, r):
+        symbol, utc, side, price, old, new = r[2], int(r[3]), r[4], int(r[5]), int(r[6]), int(r[7])
+        book = self.books[symbol]
+        book.recent.append((utc, side, price, old, new))
+        if len(book.recent) > 4096:
+            book.recent = book.recent[-2048:]
+        still = []
+        for trade in book.pending:
+            delay = utc - trade["utc"]
+            if delay > LATE_NS:
+                self.classify(book, trade, "unexplained")
+            elif delay >= 0 and self.matches(trade, side, price, old, new):
+                self.account(book, trade, delay)
+            else:
+                still.append(trade)
+        book.pending = still
 
     def fold_top(self, r):
         symbol, state, utc = r[2], r[3], int(r[8])
@@ -164,6 +237,8 @@ class Report:
     def summary(self):
         books = {}
         totals = Counter()
+        trade_totals = Counter()
+        all_delays = Counter()
         for symbol in sorted(s for s in self.books if s and s != "-"):
             b = self.books[symbol]
             totals.update(b.outcomes)
@@ -179,7 +254,16 @@ class Report:
                                   "median": percentile(Counter({k: round(v * 1000) for k, v in b.spread[h].items()}), 0.5),
                                   "seconds": round(b.spread_weight[h], 1)} for h in ("market_hours", "off_hours")},
                 "top_size": {"bid_median": percentile(b.top_bid, 0.5), "ask_median": percentile(b.top_ask, 0.5)},
+                "trades": {"count": sum(b.trade_class.values()),
+                           "position": {k: b.trade_position.get(k, 0) for k in TRADE_POSITIONS},
+                           "class": {k: b.trade_class.get(k, 0) for k in TRADE_CLASSES},
+                           "accounted_delay_ms": {"p50": percentile(b.trade_delay_ms, 0.5), "p90": percentile(b.trade_delay_ms, 0.9)},
+                           "outside_bp": {"p50": percentile(b.outside_bp, 0.5), "max": max(b.outside_bp) if b.outside_bp else None}},
             }
+            trade_totals["count"] += sum(b.trade_class.values())
+            trade_totals.update({f"class_{k}": b.trade_class.get(k, 0) for k in TRADE_CLASSES})
+            trade_totals.update({f"position_{k}": b.trade_position.get(k, 0) for k in TRADE_POSITIONS})
+            all_delays.update(b.trade_delay_ms)
         closed = sum(totals.values())
         used = [s for s in self.segments if s["status"] == "used"]
         periods = []
@@ -189,7 +273,8 @@ class Report:
             periods.append({"hour_utc": iso(hour * 3_600_000_000_000), "recorded_minutes": round(p["recorded"] / 60, 1),
                             "updates": {o: p["outcomes"].get(o, 0) for o in OUTCOMES} | {"closed": n},
                             "share_3_of_3": round(p["outcomes"].get("3/3", 0) / n, 4) if n else None,
-                            "arrival_spread_ms": {"p50": percentile(p["spread_ms"], 0.5), "p99": percentile(p["spread_ms"], 0.99)}})
+                            "arrival_spread_ms": {"p50": percentile(p["spread_ms"], 0.5), "p99": percentile(p["spread_ms"], 0.99)},
+                            "trades": {k: p["trades"].get(k, 0) for k in TRADE_CLASSES}})
         return {
             "coverage": {"segments_used": len(used), "segments_excluded": len(self.segments) - len(used),
                          "recorded_hours": round(self.covered_seconds / 3600, 3), "gaps": self.coverage_gaps},
@@ -202,6 +287,12 @@ class Report:
                            "clock_error_unknown_on_some_hosts": self.clock_unknown},
             "books": books,
             "periods": periods,
+            "trades": {"count": trade_totals["count"],
+                       "class": {k: trade_totals[f"class_{k}"] for k in TRADE_CLASSES},
+                       "position": {k: trade_totals[f"position_{k}"] for k in TRADE_POSITIONS},
+                       "accounted_delay_ms": {"p50": percentile(all_delays, 0.5), "p90": percentile(all_delays, 0.9)},
+                       "windows_s": {"before_print": MATCH_BEFORE_NS / 1e9, "consistent": CONSISTENT_NS / 1e9,
+                                     "late": LATE_NS / 1e9}},
             "segments": self.segments,
         }
 
@@ -323,7 +414,14 @@ def render(summary, keys_hint):
         f"<tr><th>{e(p['hour_utc'][:13].replace('T', ' '))}:00</th><td>{p['recorded_minutes']}</td><td>{p['updates']['closed']}</td>"
         f"<td>{pct(p['share_3_of_3'])}</td><td>{p['updates']['2/3']}</td>"
         f"<td>{p['updates']['1/3']}</td><td>{p['updates']['divergent']}</td><td>{cell(p['arrival_spread_ms']['p50'])}</td>"
-        f"<td>{cell(p['arrival_spread_ms']['p99'])}</td></tr>" for p in summary["periods"])
+        f"<td>{cell(p['arrival_spread_ms']['p99'])}</td><td>{p['trades']['consistent']}/{p['trades']['late']}/{p['trades']['unexplained']}</td></tr>" for p in summary["periods"])
+    rows_trades = "".join(
+        f"<tr><th>{e(sym)}</th><td>{b['trades']['count']}</td><td>{b['trades']['position']['inside']}</td>"
+        f"<td>{b['trades']['position']['touch']}</td><td>{b['trades']['position']['outside']}</td>"
+        f"<td>{b['trades']['class']['consistent']}</td><td>{b['trades']['class']['late']}</td>"
+        f"<td>{b['trades']['class']['unexplained']}</td><td>{cell(b['trades']['accounted_delay_ms']['p50'])}</td>"
+        f"<td>{cell(b['trades']['outside_bp']['max'])}</td></tr>" for sym, b in summary["books"].items())
+    tr = summary["trades"]
     rows_segments = "".join(
         f"<tr><td>{s['incarnation']}</td><td>{e(s['status'])}</td><td>{cell(s.get('reason'))}</td><td>{cell(s.get('first_tick_utc'))}</td>"
         f"<td>{cell(s.get('last_tick_utc'))}</td><td>{cell(s.get('last_head_tick'))}</td><td>{cell(s.get('tree_size'))}</td>"
@@ -364,11 +462,13 @@ th:first-child, td:first-child {{ text-align: left; }} thead th {{ color: var(--
 <section><h2>Completeness</h2><p>Every update gets one verdict: how many recorders received identical bytes before it closed. Closed {c['closed']}: 3 of 3 {c['3/3']}, 2 of 3 {c['2/3']}, 1 of 3 {c['1/3']}, divergent {c['divergent']}.</p>
 <div class="wrap"><table><thead><tr><th>Book</th><th>Updates</th><th>3 of 3</th><th>2 of 3</th><th>1 of 3</th><th>Divergent</th><th>Gaps</th><th>Resubscribes</th></tr></thead><tbody>{rows_books}</tbody></table></div></section>
 <section><h2>By hour (UTC)</h2><p>Updates grouped by the hour of their first arrival, with the minutes the tape was actually recording in that hour.</p>
-<div class="wrap"><table><thead><tr><th>Hour</th><th>Recorded min</th><th>Updates</th><th>3 of 3</th><th>2 of 3</th><th>1 of 3</th><th>Divergent</th><th>Spread p50 ms</th><th>Spread p99 ms</th></tr></thead><tbody>{rows_periods}</tbody></table></div></section>
+<div class="wrap"><table><thead><tr><th>Hour</th><th>Recorded min</th><th>Updates</th><th>3 of 3</th><th>2 of 3</th><th>1 of 3</th><th>Divergent</th><th>Spread p50 ms</th><th>Spread p99 ms</th><th>Trades consistent/late/unexplained</th></tr></thead><tbody>{rows_periods}</tbody></table></div></section>
 <section><h2>Consistency</h2><p>Integrity checks on the rebuilt books, counted per observation.</p>
 <div class="wrap"><table><thead><tr><th>Book</th><th>Crossed</th><th>Locked</th><th>Trade outside book</th><th>Snapshot differs</th><th>Stale snapshot</th></tr></thead><tbody>{rows_consistency}</tbody></table></div></section>
 <section><h2>Timeliness and liveness</h2><p>Time between consecutive DEPTH updates by first arrival (ms). The feed documents about 1 s batching for no-login subscribers and a 30 s silence rule for dead connections. Arrival spread p50 {cell(t['arrival_spread_ms']['p50'])} ms, p90 {cell(t['arrival_spread_ms']['p90'])} ms, p99 {cell(t['arrival_spread_ms']['p99'])} ms, max {cell(t['arrival_spread_ms']['max'])} ms over {t['arrival_spread_ms']['updates']} updates seen by at least two recorders; clock error bound {e(bound_text)}.</p>
 <div class="wrap"><table><thead><tr><th>Book</th><th>Gap p50</th><th>Gap p90</th><th>Longest</th><th>Silences over 30 s</th></tr></thead><tbody>{rows_time}</tbody></table></div></section>
+<section><h2>Trade consistency</h2><p>Each trade print, counted once, checked against the book rebuilt from DEPTH. At print: inside the spread, at the touch, or outside it. Accounted for: a DEPTH change on the resting side at the trade price removes at least the trade's size, from {tr['windows_s']['before_print']:g} s before the print; consistent within {tr['windows_s']['consistent']:g} s, late within {tr['windows_s']['late']:g} s, otherwise unexplained. {tr['count']} trades: {tr['class']['consistent']} consistent, {tr['class']['late']} late, {tr['class']['unexplained']} unexplained; median delay {cell(tr['accounted_delay_ms']['p50'])} ms (negative means the DEPTH change arrived first).</p>
+<div class="wrap"><table><thead><tr><th>Book</th><th>Trades</th><th>Inside</th><th>Touch</th><th>Outside</th><th>Consistent</th><th>Late</th><th>Unexplained</th><th>Delay p50 ms</th><th>Max outside bp</th></tr></thead><tbody>{rows_trades}</tbody></table></div></section>
 <section><h2>Book shape</h2><p>Time-weighted mean spread in basis points, US market hours (14:30 to 21:00 UTC, weekdays) and off-hours, and median top-of-book size.</p>
 <div class="wrap"><table><thead><tr><th>Book</th><th>Spread, market hours</th><th>Spread, off-hours</th><th>Top bid size</th><th>Top ask size</th></tr></thead><tbody>{rows_shape}</tbody></table></div></section>
 <section><h2>Coverage and how to check</h2><p>Gaps when the tape was not recording: {e(gap_text)}. Each segment below can be re-verified with <code>velocita-tape-verify --wal SEGMENT/wal.log --heads SEGMENT/heads --incarnation N --head-every 60 {e(keys_hint)}</code>.</p>

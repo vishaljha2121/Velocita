@@ -1,4 +1,5 @@
 // velocita-tape-verify: rebuilds the tape from a voter's log and checks every leaf, head, signature and tick.
+#include "velocita/tape/frame.hpp"
 #include "velocita/tape/head_file.hpp"
 #include "velocita/tape/reducer.hpp"
 #include "velocita/tape/signing.hpp"
@@ -140,9 +141,69 @@ int main(int argc, char** argv) {
             for (const auto& c : v.copies) *s.rows << '\t' << (c.present ? c.utc_recv_ns : 0);
             *s.rows << '\n';
         };
+        std::set<std::pair<std::string, std::uint64_t>> trades_seen;
+        const auto symbol_index = [&](std::string_view name) -> int {
+            for (std::uint8_t i = 0; i < state->symbol_count; ++i)
+                if (state->symbols[i].view() == name) return i;
+            return -1;
+        };
+        const auto level_qty = [](const Side& side, std::int64_t price) -> std::int64_t {
+            for (std::uint16_t k = 0; k < side.size; ++k)
+                if (side.levels[k].price == price) return side.levels[k].qty;
+            return 0;
+        };
         for (const auto& e : entries) {
             if (e.index != leaves.size() + 1) fail("index sequence", e.index, std::to_string(leaves.size() + 1), std::to_string(e.index));
+            std::optional<Entry> before_entry;
+            int depth_sym = -1;
+            Side before_bids, before_asks;
+            if (rows.is_open()) {
+                before_entry = decode_entry(e.bytes);
+                if (const auto* o = before_entry ? std::get_if<Observation>(&*before_entry) : nullptr) {
+                    const int sym = symbol_index(o->symbol.view());
+                    if (o->channel == Channel::depth && sym >= 0) {
+                        depth_sym = sym;
+                        before_bids = state->books[sym].bids;
+                        before_asks = state->books[sym].asks;
+                    } else if (o->channel == Channel::trade && o->kind == UpdateKind::update && o->has_seqnum && sym >= 0 &&
+                               trades_seen.insert({std::string(o->symbol.view()), o->seqnum}).second) {
+                        const std::string_view raw(reinterpret_cast<const char*>(o->payload.data()), o->payload.size());
+                        std::string_view price_text, qty_text;
+                        std::int64_t price = 0, qty = 0;
+                        if (read_trade(raw, price_text, qty_text) && parse_atoms(price_text, price) == DecimalStatus::ok &&
+                            parse_atoms(qty_text, qty) == DecimalStatus::ok) {
+                            const char side = raw.find("\"taking_side\":\"BUY\"") != std::string_view::npos ? 'B'
+                                              : raw.find("\"taking_side\":\"SELL\"") != std::string_view::npos ? 'S' : '?';
+                            const auto& b = state->books[sym];
+                            const bool valid = b.state == BookState::valid && b.bids.size && b.asks.size;
+                            const auto passive = side == 'B' ? level_qty(b.asks, price) : side == 'S' ? level_qty(b.bids, price) : 0;
+                            rows << "X\t" << e.index << '\t' << o->symbol.view() << '\t' << o->seqnum << '\t' << o->utc_recv_ns
+                                 << '\t' << side << '\t' << price << '\t' << qty << '\t';
+                            if (valid) rows << b.bids.levels[0].price << '\t' << b.asks.levels[0].price;
+                            else rows << "-\t-";
+                            rows << '\t' << passive << '\n';
+                        }
+                    }
+                }
+            }
             const auto result = apply_entry(*state, config, e.index, e.bytes, on_close, &sink);
+            if (depth_sym >= 0) {
+                const auto& o = std::get<Observation>(*before_entry);
+                const auto diff = [&](char side_tag, const Side& was, const Side& now) {
+                    for (std::uint16_t k = 0; k < was.size; ++k) {
+                        const auto q = level_qty(now, was.levels[k].price);
+                        if (q != was.levels[k].qty)
+                            rows << "L\t" << e.index << '\t' << o.symbol.view() << '\t' << o.utc_recv_ns << '\t' << side_tag << '\t'
+                                 << was.levels[k].price << '\t' << was.levels[k].qty << '\t' << q << '\n';
+                    }
+                    for (std::uint16_t k = 0; k < now.size; ++k)
+                        if (level_qty(was, now.levels[k].price) == 0 && now.levels[k].qty != 0)
+                            rows << "L\t" << e.index << '\t' << o.symbol.view() << '\t' << o.utc_recv_ns << '\t' << side_tag << '\t'
+                                 << now.levels[k].price << "\t0\t" << now.levels[k].qty << '\n';
+                };
+                diff('B', before_bids, state->books[depth_sym].bids);
+                diff('A', before_asks, state->books[depth_sym].asks);
+            }
             if (rows.is_open() && result.decoded) {
                 const auto decoded = decode_entry(e.bytes);
                 if (const auto* o = decoded ? std::get_if<Observation>(&*decoded) : nullptr) {
