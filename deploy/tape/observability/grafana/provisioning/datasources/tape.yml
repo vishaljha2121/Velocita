@@ -1,0 +1,9 @@
+apiVersion: 1
+datasources:
+  - name: Tape Prometheus
+    uid: velocita-tape-prometheus
+    type: prometheus
+    access: proxy
+    url: http://127.0.0.1:9191
+    isDefault: true
+    editable: false

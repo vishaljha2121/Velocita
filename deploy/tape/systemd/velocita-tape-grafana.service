@@ -1,0 +1,25 @@
+[Unit]
+Description=Velocita verifiable tape Grafana (NUC1, read-only, tailnet only)
+After=velocita-tape-prometheus.service
+AssertPathExists=%h/velocita-tape/observability/grafana-admin-password
+
+[Service]
+EnvironmentFile=%h/.config/velocita/host.env
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-tape-grafana \
+    --network host --memory 256m --user 0 \
+    -v velocita-tape-grafana-data:/var/lib/grafana \
+    -v %h/velocita-tape/observability/grafana/provisioning:/etc/grafana/provisioning:ro \
+    -v %h/velocita-tape/observability/dashboards:/etc/grafana/dashboards:ro \
+    -v %h/velocita-tape/observability/grafana-admin-password:/run/grafana-admin-password:ro \
+    -e GF_SERVER_HTTP_ADDR=${VELOCITA_TAILSCALE_IP} -e GF_SERVER_HTTP_PORT=3301 \
+    -e GF_SECURITY_ADMIN_PASSWORD__FILE=/run/grafana-admin-password \
+    -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer -e GF_AUTH_DISABLE_LOGIN_FORM=true \
+    -e GF_USERS_ALLOW_SIGN_UP=false -e GF_ANALYTICS_REPORTING_ENABLED=false -e GF_ANALYTICS_CHECK_FOR_UPDATES=false \
+    -e GF_SECURITY_DISABLE_GRAVATAR=true -e GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/velocita-tape.json \
+    docker.io/grafana/grafana:13.1.3
+ExecStop=/usr/bin/podman stop -t 10 velocita-tape-grafana
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

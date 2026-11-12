@@ -1,0 +1,1674 @@
+{
+ "uid": "velocita-tape",
+ "title": "Verifiable tape",
+ "tags": [
+  "velocita",
+  "tape"
+ ],
+ "timezone": "utc",
+ "editable": false,
+ "graphTooltip": 1,
+ "refresh": "10s",
+ "schemaVersion": 39,
+ "time": {
+  "from": "now-3h",
+  "to": "now"
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "row",
+   "title": "Now",
+   "collapsed": false,
+   "gridPos": {
+    "w": 24,
+    "h": 1,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Books valid",
+   "description": "Order books every voter currently holds as valid, out of 12. Lower means a book is waiting for its next snapshot.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "min(sum by (host) (velocita_tape_book_state{state=\"valid\",source=\"log\"}))",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     },
+     "instant": true,
+     "range": false
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "mappings": [],
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#ec835a",
+        "value": null
+       },
+       {
+        "color": "#0ca30c",
+        "value": 12
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "id": 2,
+   "gridPos": {
+    "w": 4,
+    "h": 4,
+    "x": 0,
+    "y": 1
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Leader",
+   "description": "The voter that orders the log right now.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(velocita_tape_raft_leader_id)",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     },
+     "instant": true,
+     "range": false
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "1": {
+         "text": "nuc1",
+         "color": "#3987e5"
+        },
+        "2": {
+         "text": "pi",
+         "color": "#d95926"
+        },
+        "3": {
+         "text": "nuc2",
+         "color": "#199e70"
+        },
+        "-1": {
+         "text": "electing",
+         "color": "#fab219"
+        }
+       }
+      }
+     ],
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "id": 3,
+   "gridPos": {
+    "w": 4,
+    "h": 4,
+    "x": 4,
+    "y": 1
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Raft term",
+   "description": "Increases by one at every election. A steady value means a stable leader.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(velocita_tape_raft_term)",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     },
+     "instant": true,
+     "range": false
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "mappings": [],
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "id": 4,
+   "gridPos": {
+    "w": 4,
+    "h": 4,
+    "x": 8,
+    "y": 1
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Ticks",
+   "description": "One tick per second of replicated time. It should climb steadily.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(velocita_tape_last_tick)",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     },
+     "instant": true,
+     "range": false
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "mappings": [],
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "id": 5,
+   "gridPos": {
+    "w": 4,
+    "h": 4,
+    "x": 12,
+    "y": 1
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Signed tree heads",
+   "description": "Merkle tree heads published with at least two voter signatures (one a minute).",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(velocita_tape_published_heads)",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     },
+     "instant": true,
+     "range": false
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "mappings": [],
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "id": 6,
+   "gridPos": {
+    "w": 4,
+    "h": 4,
+    "x": 16,
+    "y": 1
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Divergent updates",
+   "description": "Updates where recorders received different bytes for the same message. Should stay at 0.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(velocita_tape_verdicts_total{kind=\"update\",outcome=\"divergent\"})",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     },
+     "instant": true,
+     "range": false
+    }
+   ],
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value",
+    "justifyMode": "center"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "decimals": 0,
+     "mappings": [],
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#0ca30c",
+        "value": null
+       },
+       {
+        "color": "#d03b3b",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "id": 7,
+   "gridPos": {
+    "w": 4,
+    "h": 4,
+    "x": 20,
+    "y": 1
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "id": 8,
+   "type": "row",
+   "title": "Agreement between the three vantage points",
+   "collapsed": false,
+   "gridPos": {
+    "w": 24,
+    "h": 1,
+    "x": 0,
+    "y": 5
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Update verdicts per minute",
+   "description": "Every published update gets one verdict: how many of the three recorders saw identical bytes before it closed.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(rate(velocita_tape_verdicts_total{kind=\"update\",outcome=\"agree_3_of_3\"}[2m])) * 60",
+     "legendFormat": "agree_3_of_3",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "max(rate(velocita_tape_verdicts_total{kind=\"update\",outcome=\"agree_2_of_3\"}[2m])) * 60",
+     "legendFormat": "agree_2_of_3",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    },
+    {
+     "refId": "C",
+     "expr": "max(rate(velocita_tape_verdicts_total{kind=\"update\",outcome=\"only_1_of_3\"}[2m])) * 60",
+     "legendFormat": "only_1_of_3",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    },
+    {
+     "refId": "D",
+     "expr": "max(rate(velocita_tape_verdicts_total{kind=\"update\",outcome=\"divergent\"}[2m])) * 60",
+     "legendFormat": "divergent",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 25,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "agree_3_of_3"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#0ca30c"
+        }
+       },
+       {
+        "id": "displayName",
+        "value": "3 of 3 agree"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "agree_2_of_3"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#fab219"
+        }
+       },
+       {
+        "id": "displayName",
+        "value": "2 of 3 agree"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "only_1_of_3"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#ec835a"
+        }
+       },
+       {
+        "id": "displayName",
+        "value": "seen by 1 only"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "divergent"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d03b3b"
+        }
+       },
+       {
+        "id": "displayName",
+        "value": "divergent"
+       }
+      ]
+     }
+    ]
+   },
+   "id": 9,
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 0,
+    "y": 6
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Observations committed per recorder",
+   "description": "Frames each machine's recorder got into the log, per second. The three lines should track each other.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (recorder) (rate(velocita_tape_recorder_requests_total[2m]))",
+     "legendFormat": "recorder {{recorder}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     },
+     "decimals": 2
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "recorder 1"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       },
+       {
+        "id": "displayName",
+        "value": "nuc1 recorder"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "recorder 2"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       },
+       {
+        "id": "displayName",
+        "value": "pi recorder"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "recorder 3"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       },
+       {
+        "id": "displayName",
+        "value": "nuc2 recorder"
+       }
+      ]
+     }
+    ]
+   },
+   "id": 10,
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 12,
+    "y": 6
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Arrival skew between recorders",
+   "description": "Time between the first and last recorder receiving the same update.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "histogram_quantile(0.5, max by (le) (rate(velocita_tape_vantage_skew_seconds_bucket[5m])))",
+     "legendFormat": "median",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "histogram_quantile(0.99, max by (le) (rate(velocita_tape_vantage_skew_seconds_bucket[5m])))",
+     "legendFormat": "p99",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "median"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "p99"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#9085e9"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 11,
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 0,
+    "y": 14
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Late copies per minute",
+   "description": "Copies that arrived after their verdict had closed (they are kept, but do not change the verdict).",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max(rate(velocita_tape_late_copies_total[5m])) * 60",
+     "legendFormat": "late copies",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "late copies"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 12,
+   "gridPos": {
+    "w": 12,
+    "h": 8,
+    "x": 12,
+    "y": 14
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "id": 13,
+   "type": "row",
+   "title": "Order books",
+   "collapsed": false,
+   "gridPos": {
+    "w": 24,
+    "h": 1,
+    "x": 0,
+    "y": 22
+   },
+   "panels": []
+  },
+  {
+   "type": "state-timeline",
+   "title": "Book state per symbol",
+   "description": "Green while the reconstructed book is valid; red while it waits for a snapshot after a gap or divergence.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (symbol) (velocita_tape_book_state{state=\"valid\",source=\"log\"})",
+     "legendFormat": "{{symbol}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "showValue": "never",
+    "rowHeight": 0.8,
+    "mergeValues": true,
+    "legend": {
+     "showLegend": false
+    },
+    "tooltip": {
+     "mode": "single"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "1": {
+         "text": "valid",
+         "color": "#0ca30c"
+        },
+        "0": {
+         "text": "not valid",
+         "color": "#d03b3b"
+        }
+       }
+      }
+     ],
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#d03b3b",
+        "value": null
+       },
+       {
+        "color": "#0ca30c",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "id": 14,
+   "gridPos": {
+    "w": 16,
+    "h": 10,
+    "x": 0,
+    "y": 23
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "bargauge",
+   "title": "Longest silence between DEPTH messages",
+   "description": "The longest gap ever seen between two DEPTH messages for each book. Long gaps are normal outside US market hours.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (symbol) (velocita_tape_book_max_silence_seconds)",
+     "legendFormat": "{{symbol}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     },
+     "instant": true,
+     "range": false
+    }
+   ],
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "basic",
+    "showUnfilled": true,
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "values": false
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0,
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "#3987e5"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#3987e5",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "id": 15,
+   "gridPos": {
+    "w": 8,
+    "h": 10,
+    "x": 16,
+    "y": 23
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "id": 16,
+   "type": "row",
+   "title": "Cluster and network",
+   "collapsed": false,
+   "gridPos": {
+    "w": 24,
+    "h": 1,
+    "x": 0,
+    "y": 33
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Log entries committed per second",
+   "description": "Each voter's commit rate. All three should overlap.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "rate(velocita_tape_raft_commit_index[1m])",
+     "legendFormat": "{{host}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 17,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 0,
+    "y": 34
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Entries behind the leader",
+   "description": "How far each voter's committed log trails the furthest one.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "scalar(max(velocita_tape_raft_commit_index)) - velocita_tape_raft_commit_index",
+     "legendFormat": "{{host}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 18,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 8,
+    "y": 34
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Tailscale send per host",
+   "description": "Everything each host sends over the tailnet. The dashed line is the watchdog's limit (600 KB/s for 60 s stops the tape).",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "rate(node_network_transmit_bytes_total{device=\"tailscale0\"}[1m])",
+     "legendFormat": "{{host}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "Bps",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0,
+      "thresholdsStyle": {
+       "mode": "dashed"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "transparent",
+        "value": null
+       },
+       {
+        "color": "#d03b3b",
+        "value": 614400
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 19,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 16,
+    "y": 34
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Recorder events per 10 minutes",
+   "description": "Gaps, resubscriptions, reconnects and dead connections the recorders reported.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (event) (max by (event, recorder) (increase(velocita_tape_recorder_events_total[10m])))",
+     "legendFormat": "{{event}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "resubscribe"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "gap"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "reconnect"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "dead_connection"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#c98500"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "overflow"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d55181"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "regression"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#9085e9"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "session_start"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#008300"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "oversize"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#e66767"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 20,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 0,
+    "y": 42
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Rejected frames and refused submissions",
+   "description": "Frames that failed authentication and submissions a voter refused. Should stay at 0.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "rate(velocita_tape_rejected_frames_total[5m])",
+     "legendFormat": "{{host}} rejected",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    },
+    {
+     "refId": "B",
+     "expr": "rate(velocita_tape_refused_submissions_total[5m])",
+     "legendFormat": "{{host}} refused",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     },
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "id": 21,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 8,
+    "y": 42
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Free disk per host",
+   "description": "Root filesystem space left. The tape's log grows about 300 MB a day.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "min by (host) (node_filesystem_avail_bytes{mountpoint=\"/\"})",
+     "legendFormat": "{{host}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "velocita-tape-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none"
+      },
+      "spanNulls": false,
+      "axisSoftMin": 0
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc1"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#3987e5"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "pi"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#d95926"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "nuc2"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#199e70"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "id": 22,
+   "gridPos": {
+    "w": 8,
+    "h": 8,
+    "x": 16,
+    "y": 42
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-tape-prometheus"
+   }
+  }
+ ]
+}

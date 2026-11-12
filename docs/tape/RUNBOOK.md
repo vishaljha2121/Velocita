@@ -99,6 +99,10 @@ Never copy large files to a host while the tape runs without a rate limit: `scp 
 
 ## 4. Watch
 
+If `~/velocita-tape/data/watchdog-tripped` exists, the watchdog stopped the tape; it restarts it once the
+link has been quiet for 5 minutes (D-50). `journalctl --user -u velocita-tape-watchdog` shows each stop and
+restart.
+
 First, the network budget (D-42). The tape needs tens of KB/s per host; if any host sends more than
 200 KB/s over `tailscale0` for a minute, stop the voters and recorders and investigate:
 
@@ -123,6 +127,23 @@ ssh HOST 'cp velocita-tape/data/voter/wal.log /tmp/wal.log && podman run --rm --
     localhost/velocita-tape:current velocita-tape-verify --wal /w/wal.log --heads /w/heads --incarnation INCARNATION \
     --head-every 60 --key /k/head-1.pub.pem --key /k/head-2.pub.pem --key /k/head-3.pub.pem | tail -1; rm /tmp/wal.log'
 ```
+
+Dashboard: http://100.72.127.102:3301 (tailnet only, read-only). Install or update it on NUC1 (D-51):
+
+```sh
+python3 tools/tape-grafana-dashboard.py
+H=velocitas@100.72.127.102
+ssh $H 'mkdir -p ~/velocita-tape/observability/grafana/provisioning/datasources ~/velocita-tape/observability/grafana/provisioning/dashboards ~/velocita-tape/observability/dashboards'
+scp deploy/tape/observability/prometheus.yml $H:velocita-tape/observability/
+scp deploy/tape/observability/grafana/provisioning/datasources/tape.yml $H:velocita-tape/observability/grafana/provisioning/datasources/
+scp deploy/tape/observability/grafana/provisioning/dashboards/tape.yml $H:velocita-tape/observability/grafana/provisioning/dashboards/
+scp deploy/tape/observability/dashboards/velocita-tape.json $H:velocita-tape/observability/dashboards/
+scp deploy/tape/systemd/velocita-tape-prometheus.service deploy/tape/systemd/velocita-tape-grafana.service $H:.config/systemd/user/
+ssh $H 'P=~/velocita-tape/observability/grafana-admin-password; [ -f $P ] || (umask 077; head -c 32 /dev/urandom | base64 | tr -d "\n=+/" > $P)
+    systemctl --user daemon-reload && systemctl --user start velocita-tape-prometheus velocita-tape-grafana'
+```
+
+Grafana reloads the dashboard file within 30 s; nothing needs restarting for a dashboard change.
 
 ## 5. Unplug drill
 

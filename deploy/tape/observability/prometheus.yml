@@ -1,0 +1,31 @@
+# Tape-only Prometheus on NUC1 (velocita-tape-prometheus.service); separate from the trading monitoring.
+global:
+  scrape_interval: 10s
+  scrape_timeout: 5s
+  external_labels:
+    cluster: velocita-tape
+
+scrape_configs:
+  - job_name: velocita-tape
+    sample_limit: 2000
+    static_configs:
+      - targets: ["100.72.127.102:45301"]
+        labels: {host: nuc1}
+      - targets: ["100.84.151.116:45301"]
+        labels: {host: pi}
+      - targets: ["100.85.36.22:45301"]
+        labels: {host: nuc2}
+
+  - job_name: node
+    sample_limit: 20000
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'node_network_(transmit|receive)_bytes_total|node_filesystem_avail_bytes|node_load1|node_memory_MemAvailable_bytes'
+        action: keep
+    static_configs:
+      - targets: ["100.72.127.102:9110"]
+        labels: {host: nuc1}
+      - targets: ["100.84.151.116:9110"]
+        labels: {host: pi}
+      - targets: ["100.85.36.22:9110"]
+        labels: {host: nuc2}

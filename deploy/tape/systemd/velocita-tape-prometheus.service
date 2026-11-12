@@ -1,0 +1,18 @@
+[Unit]
+Description=Velocita verifiable tape Prometheus (NUC1)
+
+[Service]
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-tape-prometheus \
+    --network host --memory 256m \
+    -v velocita-tape-prometheus-data:/prometheus \
+    -v %h/velocita-tape/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+    docker.io/prom/prometheus:v3.13.2 \
+    --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus \
+    --storage.tsdb.retention.time=7d --storage.tsdb.retention.size=512MB \
+    --web.listen-address=127.0.0.1:9191
+ExecStop=/usr/bin/podman stop -t 10 velocita-tape-prometheus
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
