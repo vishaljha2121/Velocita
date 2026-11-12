@@ -18,7 +18,7 @@ RUN mkdir -p /ccache && ccache --zero-stats \
         -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
         -DFETCHCONTENT_SOURCE_DIR_AERON=/opt/velocita-deps/aeron \
         -DFETCHCONTENT_SOURCE_DIR_WILLEMT_RAFT=/opt/velocita-deps/willemt-raft \
-        -DVELOCITA_BUILD_TAPE=ON \
+        -DVELOCITA_BUILD_TAPE=ON -DVELOCITA_TAPE_REQUIRE_FIXTURE=OFF \
     && cmake --build /build --parallel "${BUILD_JOBS}" --target velocita-tape-voter velocita-tape-recorder \
         velocita-tape-exporter velocita-tape-verify velocita-tape-keys tape-log-apply tape-replica-tests tape-voter-tests tape-submitter-tests \
     && ccache --show-stats \

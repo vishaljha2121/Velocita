@@ -92,6 +92,13 @@ class Run:
         return [e for e in self.entries if e["type"] == 3 and e["kind"] == kind]
 
 
+class FixtureIsAvailable(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("TAPE_REQUIRE_FIXTURE") == "1", "the fixture is optional here")
+    def test_the_recorder_tests_can_run(self):
+        self.assertTrue(RECORDER, "TAPE_RECORDER is not set")
+        self.assertTrue(fixture_available(), f"{FIXTURE_PYTHON} cannot import websockets")
+
+
 @unittest.skipUnless(RECORDER and fixture_available(), "requires the recorder binary and the websockets library")
 class RecorderTests(unittest.TestCase):
     def test_bytes_and_hashes_are_exactly_what_was_sent(self):
@@ -121,6 +128,25 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual([(q["type"], q["channels"], q["item_names"]) for q in requests[1:3]],
                          [("UNSUBSCRIBE_NO_AUTH", ["DEPTH"], [SYM]), ("SUBSCRIBE_NO_AUTH", ["DEPTH"], [SYM])])
         self.assertEqual(len(r.events(7)), 1)
+
+    def test_resync_waits_for_each_reply_and_the_stream_ends_up_subscribed(self):
+        frames = [frame(100, "SNAPSHOT"), frame(100, "SNAPSHOT_COMPLETE"), frame(100), frame(101), frame(103)]
+        r = Run([{"busy_ms": 2000}, {"await_subscribe": 1}, {"sleep": 2.2}] + [{"send": f} for f in frames] +
+                [{"await_subscribe": 3}, {"sleep": 2.5}], run_ms=9000)
+        replies = [json.loads(m["raw"]) for m in r.log if m["dir"] == "ctl"]
+        self.assertFalse([x for x in replies if x["status"] == "ERROR"], "no request was sent while another was pending")
+        last = replies[-1]["subscriptions"]
+        self.assertIn(SYM, next(s["item_names"] for s in last if s["channel"] == "DEPTH"))
+
+    def test_a_rejected_request_is_retried_until_the_server_accepts_it(self):
+        frames = [frame(100, "SNAPSHOT"), frame(100, "SNAPSHOT_COMPLETE"), frame(100), frame(101), frame(103)]
+        r = Run([{"busy_ms": 100, "busy_after_reply_ms": 300}, {"await_subscribe": 1}, {"sleep": 0.6}] +
+                [{"send": f} for f in frames] + [{"sleep": 2.0}], run_ms=4500)
+        replies = [json.loads(m["raw"]) for m in r.log if m["dir"] == "ctl"]
+        self.assertTrue([x for x in replies if x["status"] == "ERROR"], "the server rejected a request")
+        accepted = [x for x in replies if x["status"] != "ERROR"]
+        self.assertIn(SYM, next(s["item_names"] for s in accepted[-1]["subscriptions"] if s["channel"] == "DEPTH"))
+        self.assertEqual([q["type"] for q in r.received()][-1], "SUBSCRIBE_NO_AUTH")
 
     def test_regression_is_recorded_without_resubscribing(self):
         frames = [frame(100, "SNAPSHOT"), frame(100, "SNAPSHOT_COMPLETE"), frame(100), frame(101), frame(100)]

@@ -91,6 +91,19 @@ private:
     std::map<std::pair<std::string, std::string>, std::pair<std::uint64_t, std::uint64_t>> overflow_ranges_;
     std::vector<std::pair<std::string, std::string>> pending_resync_;
     std::size_t refresh_next_{};
+    struct ControlRequest {
+        const char* type{};
+        std::vector<std::string> channels;
+        std::vector<std::string> items;
+    };
+    void request(ControlRequest r);
+    void pump_control(class WebSocket& ws, std::chrono::steady_clock::time_point now);
+    void on_control_reply(const std::string& raw, std::chrono::steady_clock::time_point now);
+    std::deque<ControlRequest> control_queue_;
+    std::optional<ControlRequest> in_flight_;
+    std::chrono::steady_clock::time_point in_flight_at_{};
+    std::chrono::steady_clock::time_point retry_at_{};
+    std::chrono::steady_clock::time_point next_reconcile_{};
 };
 
 class Submitter {

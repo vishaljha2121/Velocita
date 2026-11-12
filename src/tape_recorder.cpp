@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <ctime>
 #include <iostream>
+#include <set>
 
 #ifdef __linux__
 #include <sys/timex.h>
@@ -107,6 +108,87 @@ void Reader::subscribe(WebSocket& ws, const char* type, const std::vector<std::s
                  ",\"channels\":" + json_list(channels) + ",\"timestamp\":\"" + ts + "\"}");
 }
 
+namespace {
+
+std::set<std::pair<std::string, std::string>> server_subscriptions(const std::string& raw) {
+    std::set<std::pair<std::string, std::string>> out;
+    const auto start = raw.find("\"subscriptions\":[");
+    if (start == std::string::npos) return out;
+    std::size_t at = start + 17;
+    int depth = 1;
+    std::size_t end = at;
+    for (; end < raw.size() && depth > 0; ++end) {
+        if (raw[end] == '[') ++depth;
+        else if (raw[end] == ']') --depth;
+    }
+    const auto body = raw.substr(at, end - at);
+    std::size_t pos = 0;
+    while (true) {
+        const auto ch = body.find("\"channel\":\"", pos);
+        if (ch == std::string::npos) break;
+        const auto ch_end = body.find('"', ch + 11);
+        if (ch_end == std::string::npos) break;
+        const auto channel = body.substr(ch + 11, ch_end - ch - 11);
+        const auto items = body.find("\"item_names\":[", ch_end);
+        if (items == std::string::npos) break;
+        const auto items_end = body.find(']', items);
+        if (items_end == std::string::npos) break;
+        std::size_t q = items + 14;
+        while (true) {
+            const auto a = body.find('"', q);
+            if (a == std::string::npos || a > items_end) break;
+            const auto b = body.find('"', a + 1);
+            if (b == std::string::npos || b > items_end) break;
+            out.emplace(channel, body.substr(a + 1, b - a - 1));
+            q = b + 1;
+        }
+        pos = items_end;
+    }
+    return out;
+}
+
+}
+
+void Reader::request(ControlRequest r) { control_queue_.push_back(std::move(r)); }
+
+void Reader::pump_control(WebSocket& ws, std::chrono::steady_clock::time_point now) {
+    if (in_flight_ && now - in_flight_at_ > std::chrono::seconds(5)) {
+        control_queue_.push_front(std::move(*in_flight_));
+        in_flight_.reset();
+    }
+    if (in_flight_ || now < retry_at_ || control_queue_.empty()) return;
+    in_flight_ = std::move(control_queue_.front());
+    control_queue_.pop_front();
+    in_flight_at_ = now;
+    subscribe(ws, in_flight_->type, in_flight_->channels, in_flight_->items);
+}
+
+void Reader::on_control_reply(const std::string& raw, std::chrono::steady_clock::time_point now) {
+    if (raw.find("\"status\":\"ERROR\"") != std::string::npos) {
+        if (in_flight_) {
+            control_queue_.push_front(std::move(*in_flight_));
+            in_flight_.reset();
+        }
+        retry_at_ = now + std::chrono::milliseconds(500);
+        return;
+    }
+    in_flight_.reset();
+    if (!control_queue_.empty() || now < next_reconcile_ || raw.find("\"subscriptions\":[") == std::string::npos) return;
+    next_reconcile_ = now + std::chrono::seconds(30);
+    const auto actual = server_subscriptions(raw);
+    for (const auto& channel : config_.channels) {
+        ControlRequest missing{"SUBSCRIBE_NO_AUTH", {channel}, {}};
+        for (const auto& symbol : config_.symbols)
+            if (!actual.contains({channel, symbol})) missing.items.push_back(symbol);
+        if (missing.items.empty()) continue;
+        for (const auto& symbol : missing.items) {
+            streams_[{channel, symbol}].known = false;
+            event(EventKind::resubscribe, parse_channel(channel), symbol, 0, 0);
+        }
+        request(std::move(missing));
+    }
+}
+
 void Reader::flush_overflow() {
     if (!overflowing_) return;
     for (const auto& [key, range] : overflow_ranges_) {
@@ -129,6 +211,7 @@ void Reader::flush_overflow() {
 void Reader::handle(WebSocket& ws, std::string&& raw, std::int64_t utc, std::uint64_t mono, std::uint32_t error) {
     ++frames_;
     const auto header = classify_frame(raw);
+    if (header && header->channel == Channel::control) on_control_reply(raw, std::chrono::steady_clock::now());
     if (header && header->has_seqnum) {
         const auto key = std::make_pair(std::string(to_string(header->channel)), std::string(header->symbol));
         auto& st = streams_[key];
@@ -169,11 +252,15 @@ void Reader::handle(WebSocket& ws, std::string&& raw, std::int64_t utc, std::uin
 }
 
 void Reader::session(WebSocket& ws) {
-    subscribe(ws, "SUBSCRIBE_NO_AUTH", [&] {
+    control_queue_.clear();
+    in_flight_.reset();
+    retry_at_ = next_reconcile_ = {};
+    request({"SUBSCRIBE_NO_AUTH", [&] {
         auto c = config_.channels;
         c.push_back("HEARTBEAT");
         return c;
-    }(), config_.symbols);
+    }(), config_.symbols});
+    pump_control(ws, std::chrono::steady_clock::now());
     auto last_frame = std::chrono::steady_clock::now();
     const auto offset = config_.refresh_every * (config_.recorder_id - 1) / 3;
     auto next_refresh = last_frame + offset + config_.refresh_every / static_cast<long>(std::max<std::size_t>(1, config_.symbols.size()));
@@ -197,11 +284,12 @@ void Reader::session(WebSocket& ws) {
         }
         if (overflowing_ && ring_.size() < config_.ring_capacity / 2) flush_overflow();
         for (const auto& [channel, symbol] : pending_resync_) {
-            subscribe(ws, "UNSUBSCRIBE_NO_AUTH", {channel}, {symbol});
-            subscribe(ws, "SUBSCRIBE_NO_AUTH", {channel}, {symbol});
+            request({"UNSUBSCRIBE_NO_AUTH", {channel}, {symbol}});
+            request({"SUBSCRIBE_NO_AUTH", {channel}, {symbol}});
             event(EventKind::resubscribe, parse_channel(channel), symbol, 0, 0);
         }
         pending_resync_.clear();
+        pump_control(ws, now);
         if (config_.refresh_every.count() > 0 && now >= next_refresh && !config_.symbols.empty()) {
             const auto& symbol = config_.symbols[refresh_next_++ % config_.symbols.size()];
             streams_[{"DEPTH", symbol}].known = false;

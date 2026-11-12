@@ -63,9 +63,11 @@ if(BUILD_TESTING)
     add_test(NAME tape-replica-tests COMMAND tape-replica-tests)
     set_tests_properties(tape-replica-tests PROPERTIES TIMEOUT 300)
     set(VELOCITA_TAPE_FIXTURE_PYTHON "${Python3_EXECUTABLE}" CACHE FILEPATH "Python with the websockets library, for recorder tests")
+    option(VELOCITA_TAPE_REQUIRE_FIXTURE "Fail, rather than skip, the recorder tests when the fixture cannot run" ON)
     add_test(NAME tape-recorder-tests
         COMMAND ${CMAKE_COMMAND} -E env TAPE_RECORDER=$<TARGET_FILE:velocita-tape-recorder>
             TAPE_FIXTURE_PYTHON=${VELOCITA_TAPE_FIXTURE_PYTHON}
+            TAPE_REQUIRE_FIXTURE=$<BOOL:${VELOCITA_TAPE_REQUIRE_FIXTURE}>
             ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tape_recorder.py)
     set_tests_properties(tape-recorder-tests PROPERTIES TIMEOUT 300)
     add_test(NAME tape-reducer-is-pure

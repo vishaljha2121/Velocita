@@ -368,3 +368,26 @@ Wi-Fi. Second finding: the Pi's recorder receives about 60% of the frames the NU
 third of updates close 2 of 3 and some Pi copies arrive after the verdict closes (585 late copies). The
 tape records this as designed; why the Pi's feed connection carries fewer frames is open (next: compare
 per-channel frame counts between the Pi and a NUC).
+
+**D-47. The Pi's missing frames were my recorder's refresh racing the feed's one-request-at-a-time rule.**
+Decoding the log by recorder showed the gap was almost entirely DEPTH updates (the Pi recorded 116 against
+2,078 and 2,937 for the NUCs over 32 minutes; EBBO and INSTRUMENT matched), with no gap events. A fresh
+60 s DEPTH-only connection from each host at the same moment received the same updates on all three (111,
+111, 114), so the Pi's network was not the cause. The per-symbol timeline showed that on the Pi a refresh
+was usually followed by no snapshot and no updates. The feed's CONTROL replies explain it: the server
+handles one subscription request per connection at a time and answers a request that arrives while
+another is in progress with `"status":"ERROR","message":"Authentication already in progress"`. The
+recorder sent UNSUBSCRIBE and SUBSCRIBE back to back, so the unsubscribe often took effect and the
+subscribe was rejected, leaving that symbol's DEPTH silent until a later refresh happened to get through;
+NUC1 showed the same rejections less often. Fix: control requests go through a queue, one at a time,
+each waiting for its reply (5 s timeout); a rejected request is retried after 500 ms; and every accepted
+reply's subscription list is reconciled against the configured channels and symbols (at most every 30 s),
+resubscribing anything missing, so a lost subscription heals itself. The test fixture now behaves like the
+feed (replies with the subscription list, rejects requests while busy). New tests fail on back-to-back
+sending and on dropping a rejected request; both mutants were checked by forced rebuilds. These live in the
+Python recorder suite, which the C++ mutation harness does not build, so they are not in `mutation_tape.py`.
+
+**D-48. The recorder tests had been skipping silently.** The CMake test passed in 0.2 s because the
+configured Python lacked `websockets`; every recorder test was skipped and ctest still said "Passed".
+`VELOCITA_TAPE_REQUIRE_FIXTURE` (default ON) now makes a missing fixture a failure; the image's builder,
+which has no `websockets`, turns it off explicitly (the recorder tests run on the Mac instead, D-35).
