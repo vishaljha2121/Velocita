@@ -358,6 +358,9 @@ void Voter::write_state_page(std::int64_t utc_ns) const {
         for (std::size_t k = 1; k <= 8; ++k)
             m << "velocita_tape_recorder_events_total{" << log << ",recorder=\"" << (r + 1) << "\",event=\""
               << to_string(static_cast<EventKind>(k)) << "\"} " << c.events[r][k] << "\n";
+    for (std::size_t r = 0; r < kRecorders; ++r)
+        m << "velocita_tape_recorder_requests_total{" << log << ",recorder=\"" << (r + 1) << "\"} "
+          << (s.sessions[r].started ? s.sessions[r].last_request : 0) << "\n";
     for (std::uint8_t i = 0; i < s.symbol_count; ++i) {
         const auto& b = s.books[i];
         const auto sym = std::string(s.symbols[i].view());
