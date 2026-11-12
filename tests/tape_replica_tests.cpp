@@ -208,6 +208,7 @@ void test_no_majority_commits_nothing() {
 
 void test_slow_links_send_each_entry_about_once() {
     Cluster c("slow");
+    check(c.await_leader() >= 0, "a leader is elected before the link slows");
     c.latency_ms = 400;
     for (std::uint8_t r = 1; r <= 3; ++r) check(c.propose(session_start(r, 300 + r)), "session start proposed on a slow link");
     std::uint64_t next = 2;
@@ -227,6 +228,7 @@ void test_slow_links_send_each_entry_about_once() {
 
 void test_lossy_links_still_commit_everything() {
     Cluster c("lossy");
+    check(c.await_leader() >= 0, "a leader is elected before the link turns lossy");
     c.latency_ms = 50;
     c.loss_percent = 10;
     for (std::uint8_t r = 1; r <= 3; ++r) check(c.propose(session_start(r, 400 + r)), "session start proposed on a lossy link");
