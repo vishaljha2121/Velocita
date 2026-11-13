@@ -149,6 +149,8 @@ int main(int argc, char** argv) {
         ApplyResult book_leaf;
         Book book_copy;
         std::string book_name;
+        std::uint64_t book_first = 0, book_last = 0;
+        bool book_seen = false;
         std::ofstream rows;
         if (!extract_path.empty()) {
             rows.open(extract_path, std::ios::trunc);
@@ -279,6 +281,13 @@ int main(int argc, char** argv) {
                     last_tick_utc = t.proposer_utc_ns;
                 }
             }
+            if (!book_symbol.empty())
+                for (std::uint8_t i = 0; i < state->symbol_count; ++i)
+                    if (state->symbols[i].view() == book_symbol && state->books[i].state == BookState::valid) {
+                        if (!book_seen) book_first = state->books[i].position;
+                        book_last = state->books[i].position;
+                        book_seen = true;
+                    }
             if (!book_symbol.empty() && until_seq && book_index == 0) {
                 for (std::uint8_t i = 0; i < state->symbol_count; ++i) {
                     const auto& b = state->books[i];
@@ -336,9 +345,17 @@ int main(int argc, char** argv) {
                      v2::to_hex(g.previous_root) + "@" + std::to_string(g.previous_tree_size));
         }
         if (!bundle_path.empty()) {
-            if (!book_index) fail("bundle: book not found", 0, book_symbol, "none");
+            if (!book_index)
+                fail("bundle: book not found", 0,
+                     book_seen ? "--until-seq from " + std::to_string(book_first > 0 ? book_first - 1 : 0) + " to " +
+                                     std::to_string(book_last - 1) + " (" + book_symbol + " in this segment; update numbers are per book)"
+                               : "a valid " + book_symbol + " book in this segment",
+                     book_seen ? "--until-seq " + std::to_string(*until_seq) : "none");
             if (heads.empty() || heads.back().tree_size < book_index)
-                fail("bundle: no signed head covers the book", book_index, "a head", "none");
+                fail("bundle: no signed head covers the book yet", book_index,
+                     heads.empty() ? "a signed head" : "a log index up to " + std::to_string(heads.back().tree_size) +
+                                                           " (the newest signed head); pick an earlier --until-seq",
+                     "log index " + std::to_string(book_index));
             if (book_leaf.stream == 0xFF || state->symbols[stream_symbol(book_leaf.stream)].view() != book_name ||
                 book_leaf.book_hash != book_digest)
                 fail("bundle: the book is not the one in its leaf", book_index, v2::to_hex(book_digest),
