@@ -113,4 +113,13 @@ bool VerifyKey::verify(std::span<const std::byte> message, std::span<const std::
     return ok;
 }
 
+std::array<std::byte, 32> VerifyKey::raw() const {
+    std::array<std::byte, 32> out{};
+    std::size_t length = out.size();
+    if (EVP_PKEY_get_raw_public_key(as_key(key_), reinterpret_cast<unsigned char*>(out.data()), &length) != 1 ||
+        length != out.size())
+        throw std::runtime_error("cannot read Ed25519 public key");
+    return out;
+}
+
 }

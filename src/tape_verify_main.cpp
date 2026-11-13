@@ -38,6 +38,26 @@ struct Head {
     std::exit(1);
 }
 
+std::string bytes_hex(std::span<const std::byte> bytes) {
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string out;
+    for (const auto b : bytes) {
+        out.push_back(digits[std::to_integer<unsigned>(b) >> 4]);
+        out.push_back(digits[std::to_integer<unsigned>(b) & 0xF]);
+    }
+    return out;
+}
+
+std::string side_json(const Side& side) {
+    std::ostringstream out;
+    out << "[";
+    for (std::size_t k = 0; k < side.size; ++k)
+        out << (k ? "," : "") << "[\"" << side.levels[k].price << "\",\"" << side.levels[k].qty << "\","
+            << side.levels[k].count << "]";
+    out << "]";
+    return out.str();
+}
+
 std::vector<std::byte> hex_bytes(const std::string& hex) {
     std::vector<std::byte> out;
     for (std::size_t i = 0; i + 1 < hex.size(); i += 2) out.push_back(std::byte(std::stoi(hex.substr(i, 2), nullptr, 16)));
@@ -72,6 +92,7 @@ int main(int argc, char** argv) {
     std::optional<std::uint64_t> until_seq;
     std::filesystem::path previous_head;
     std::filesystem::path extract_path;
+    std::filesystem::path bundle_path;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : std::string(); };
@@ -87,11 +108,13 @@ int main(int argc, char** argv) {
         else if (a == "--until-seq") until_seq = std::stoull(next());
         else if (a == "--previous-head") previous_head = next();
         else if (a == "--extract") extract_path = next();
+        else if (a == "--bundle") bundle_path = next();
         else {
             std::cerr << "usage: velocita-tape-verify --wal FILE [--heads DIR --key PUB1 --key PUB2 --key PUB3 --incarnation N]\n"
                          "       [--compare-wal OTHER_FILE]\n"
                          "       [--verdict-ticks N --head-every K --tick-ms T] [--book SYMBOL --until-seq N]\n"
-                         "       [--previous-head HEAD_FILE_OF_THE_PREVIOUS_SEGMENT] [--extract ROWS.tsv]\n";
+                         "       [--previous-head HEAD_FILE_OF_THE_PREVIOUS_SEGMENT] [--extract ROWS.tsv]\n"
+                         "       [--book SYMBOL --until-seq N --bundle PROOF.json]\n";
             return 64;
         }
     }
@@ -123,6 +146,9 @@ int main(int argc, char** argv) {
         std::uint64_t book_index = 0;
         Digest book_digest;
         std::string book_dump;
+        ApplyResult book_leaf;
+        Book book_copy;
+        std::string book_name;
         std::ofstream rows;
         if (!extract_path.empty()) {
             rows.open(extract_path, std::ios::trunc);
@@ -259,6 +285,9 @@ int main(int argc, char** argv) {
                     if (state->symbols[i].view() == book_symbol && b.state == BookState::valid && b.position > *until_seq) {
                         book_index = e.index;
                         book_digest = b.hash;
+                        book_leaf = result;
+                        book_copy = b;
+                        book_name = std::string(state->symbols[i].view());
                         std::ostringstream dump;
                         dump << "\"bids\":[";
                         for (std::size_t k = 0; k < b.bids.size; ++k)
@@ -272,6 +301,8 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        if (!bundle_path.empty() && (book_symbol.empty() || !until_seq))
+            fail("bundle needs --book and --until-seq", 0, "both", "missing");
         std::uint64_t verified_heads = 0;
         const Head* previous = nullptr;
         for (const auto& h : heads) {
@@ -304,6 +335,15 @@ int main(int argc, char** argv) {
                 fail("segment link", prev.tick, v2::to_hex(prev.root) + "@" + std::to_string(prev.tree_size),
                      v2::to_hex(g.previous_root) + "@" + std::to_string(g.previous_tree_size));
         }
+        if (!bundle_path.empty()) {
+            if (!book_index) fail("bundle: book not found", 0, book_symbol, "none");
+            if (heads.empty() || heads.back().tree_size < book_index)
+                fail("bundle: no signed head covers the book", book_index, "a head", "none");
+            if (book_leaf.stream == 0xFF || state->symbols[stream_symbol(book_leaf.stream)].view() != book_name ||
+                book_leaf.book_hash != book_digest)
+                fail("bundle: the book is not the one in its leaf", book_index, v2::to_hex(book_digest),
+                     v2::to_hex(book_leaf.book_hash));
+        }
         std::cout << "{\"ok\":true,\"entries\":" << entries.size() << ",\"tree_size\":" << leaves.size()
                   << ",\"root\":\"" << v2::to_hex(state->frontier.root()) << "\",\"heads_verified\":" << verified_heads
                   << ",\"last_tick\":" << last_tick << ",\"refused_ticks\":" << refused_ticks
@@ -327,6 +367,38 @@ int main(int argc, char** argv) {
                     if (!ok) {
                         std::cout << "}}\n";
                         return 1;
+                    }
+                    if (!bundle_path.empty()) {
+                        std::ostringstream json;
+                        json << "{\"version\":1,\"symbol\":\"" << book_name << "\",\"book\":{\"position\":\""
+                             << book_copy.position << "\",\"bids\":" << side_json(book_copy.bids)
+                             << ",\"asks\":" << side_json(book_copy.asks) << "},\"leaf\":{\"index\":\"" << book_index
+                             << "\",\"entry_digest\":\"" << v2::to_hex(book_leaf.entry_digest) << "\",\"code\":"
+                             << int(book_leaf.code) << ",\"type\":" << (book_leaf.decoded ? int(book_leaf.type) : 0)
+                             << ",\"stream\":" << int(book_leaf.stream) << ",\"book_state\":" << int(book_leaf.book_state)
+                             << ",\"flags\":" << book_leaf.flags << ",\"closes\":" << book_leaf.closes
+                             << "},\"proof\":[";
+                        for (std::size_t k = 0; k < proof.size(); ++k) json << (k ? "," : "") << "\"" << v2::to_hex(proof[k]) << "\"";
+                        json << "],\"head\":{\"incarnation\":\"" << incarnation << "\",\"tick\":\"" << h.tick
+                             << "\",\"tree_size\":\"" << h.tree_size << "\",\"root\":\"" << v2::to_hex(h.root)
+                             << "\",\"signatures\":{";
+                        bool first = true;
+                        for (const auto& [voter, sig] : h.signatures) {
+                            json << (first ? "" : ",") << "\"" << voter << "\":\"" << bytes_hex(sig) << "\"";
+                            first = false;
+                        }
+                        json << "}},\"keys\":{";
+                        for (std::size_t k = 0; k < verify.size(); ++k)
+                            json << (k ? "," : "") << "\"" << k + 1 << "\":\"" << bytes_hex(verify[k].raw()) << "\"";
+                        json << "}}\n";
+                        const auto temporary = std::filesystem::path(bundle_path.string() + ".tmp");
+                        {
+                            std::ofstream out(temporary, std::ios::trunc);
+                            out << json.str();
+                            if (!out.flush()) throw std::runtime_error("cannot write " + temporary.string());
+                        }
+                        std::filesystem::rename(temporary, bundle_path);
+                        std::cout << ",\"bundle\":\"" << bundle_path.string() << "\"";
                     }
                 }
             }

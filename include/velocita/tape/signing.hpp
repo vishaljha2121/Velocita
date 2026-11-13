@@ -33,6 +33,7 @@ public:
     VerifyKey(VerifyKey&&) noexcept;
     VerifyKey& operator=(VerifyKey&&) noexcept;
     [[nodiscard]] bool verify(std::span<const std::byte> message, std::span<const std::byte> signature) const;
+    [[nodiscard]] std::array<std::byte, 32> raw() const;
 
 private:
     explicit VerifyKey(void* key) : key_(key) {}

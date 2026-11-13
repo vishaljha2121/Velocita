@@ -549,3 +549,13 @@ classes it consistent, late or unexplained, per book and per hour. Test: `test_t
 (five scripted trades covering each class, a copy delivered by all three recorders, an early DEPTH change and an
 outside print); removing the before-the-print match makes it fail. On the archive: 221 trades, 187 consistent,
 4 late, 30 unexplained (12 overnight before the recorder fix); findings in FINDINGS-2026-11-12-report.md.
+
+**D-65. Proof page: verified bundles, pinned keys, 64-bit values as strings.** `velocita-tape-verify --bundle`
+writes a small JSON bundle (book levels with order counts, the leaf's fields, the inclusion proof, the newest signed
+head and the three raw public keys) only after the whole log, every head and the proof verified, through a temporary
+file and a rename. `tools/tape-proof/check.js` recomputes the book hash, leaf hash and root itself and never reads a
+stored hash; `build.py` inlines it into one `proof.html` with no external requests. The published key fingerprints
+(SHA-256 of each key's DER encoding, as the key ceremony prints them) are built into the page, so a bundle that
+brings its own keys fails at "keys"; a key listed twice counts once. Every 64-bit value is a decimal string because
+JSON numbers lose precision above 2^53. Tests: `tape-proof-tests` (10 tests, 4 mutants killed); the real NVDAC-USDC
+bundle from segment 1794499200 passes 3 of 3 in Node and Chrome.

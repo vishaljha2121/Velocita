@@ -90,6 +90,11 @@ if(BUILD_TESTING)
             TAPE_KEYS=$<TARGET_FILE:velocita-tape-keys>
             ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tape_report.py)
     set_tests_properties(tape-report-tests PROPERTIES TIMEOUT 300)
+    add_test(NAME tape-proof-tests
+        COMMAND ${CMAKE_COMMAND} -E env TAPE_VERIFY=$<TARGET_FILE:velocita-tape-verify> TAPE_LOG_APPLY=$<TARGET_FILE:tape-log-apply>
+            TAPE_KEYS=$<TARGET_FILE:velocita-tape-keys>
+            ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tape_proof.py)
+    set_tests_properties(tape-proof-tests PROPERTIES TIMEOUT 300)
     set_tests_properties(tape-rotate-tests PROPERTIES TIMEOUT 120)
     set_tests_properties(tape-watchdog-tests PROPERTIES TIMEOUT 120)
     add_executable(tape-submitter-tests tests/tape_submitter_tests.cpp)

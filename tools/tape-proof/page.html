@@ -1,0 +1,155 @@
+<title>Tape Proof Check</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root {
+  --bg: #f3f5f6; --surface: #ffffff; --fg: #162024; --muted: #59676d; --rule: #d6dee2;
+  --accent: #0d6b66; --soft: #e1efed; --good: #0a7d0a; --good-soft: #e3f3e3; --bad: #b42d2d; --bad-soft: #f8e4e4;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1517; --surface: #161e21; --fg: #e3eaec; --muted: #9aa9af; --rule: #2a363b;
+    --accent: #5cc4bc; --soft: #15302e; --good: #6fd36f; --good-soft: #142b14; --bad: #f08a8a; --bad-soft: #351818; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1517; --surface: #161e21; --fg: #e3eaec; --muted: #9aa9af; --rule: #2a363b;
+  --accent: #5cc4bc; --soft: #15302e; --good: #6fd36f; --good-soft: #142b14; --bad: #f08a8a; --bad-soft: #351818; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; }
+main { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+h1 { font-size: 1.9rem; margin: 0; text-wrap: balance; line-height: 1.2; }
+h2 { font-size: 1.05rem; margin: 0 0 8px; }
+p { margin: 0; max-width: 70ch; }
+.muted { color: var(--muted); }
+.mono, code { font-family: var(--mono); font-size: 0.85em; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button, label.file { font: inherit; font-size: 0.9rem; border: 1px solid var(--rule); background: var(--surface); color: var(--fg);
+  padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+button:hover, label.file:hover { border-color: var(--accent); color: var(--accent); }
+button:focus-visible, label.file:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+button[aria-pressed="true"] { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+input[type=file] { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.verdict { border-radius: 4px; padding: 14px 16px; font-weight: 600; border: 1px solid var(--rule); background: var(--surface); }
+.verdict.pass { background: var(--good-soft); border-color: var(--good); color: var(--good); }
+.verdict.fail { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 16px; min-width: 0; }
+ol.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+ol.steps li { display: grid; grid-template-columns: 1.4em 7.5em 1fr; gap: 8px; align-items: baseline; }
+ol.steps .detail { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
+.ok { color: var(--good); font-weight: 700; } .no { color: var(--bad); font-weight: 700; } .skip { color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 0.88rem; }
+th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--rule); }
+th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+td.changed { background: var(--bad-soft); color: var(--bad); }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+dt { color: var(--muted); } dd { margin: 0; font-family: var(--mono); font-size: 0.82rem; overflow-wrap: anywhere; min-width: 0; }
+.empty { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<main>
+  <header style="display:flex;flex-direction:column;gap:8px">
+    <h1>Tape Proof Check</h1>
+    <p>Checks, in this browser and without sending anything anywhere, that an order book at one moment is on the
+      Verifiable Tape's signed record. It recomputes the book's hash from the levels below, climbs the Merkle proof
+      to the tree root, and verifies the voters' Ed25519 signatures on that root. The only thing it trusts is the
+      voters' published key fingerprints.</p>
+  </header>
+  <div class="bar">
+    <label class="file">Open a proof bundle<input type="file" id="file" accept=".json,application/json"></label>
+    <button type="button" id="tamper" aria-pressed="false" disabled>Change one bid size</button>
+    <span class="muted" id="source"></span>
+  </div>
+  <div class="verdict" id="verdict" role="status">No bundle loaded. Open a <code>.json</code> bundle written by <code>velocita-tape-verify --bundle</code>.</div>
+  <section class="panel"><h2>Checks</h2><ol class="steps" id="steps"><li class="empty">Waiting for a bundle.</li></ol></section>
+  <div class="grid">
+    <section class="panel"><h2 id="book-title">Book</h2><div class="table-wrap" id="book"><p class="empty">No book yet.</p></div></section>
+    <section class="panel"><h2>Signed head</h2><dl id="head"><dt>Head</dt><dd class="empty">none</dd></dl>
+      <h2 style="margin-top:14px">Voter keys</h2><dl id="keys"><dt>Keys</dt><dd class="empty">none</dd></dl></section>
+  </div>
+  <p class="muted">Prices and sizes are shown in the tape's integer atoms divided by 10<sup>9</sup>. The fingerprint of a key is the SHA-256 of its DER encoding, as printed by the key ceremony.</p>
+</main>
+<script>/*CHECK_JS*/</script>
+<script>
+const PINNED = /*PINNED*/null;
+const SAMPLE = /*SAMPLE*/null;
+let original = null, tampered = false, run = 0;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function atoms(s) {
+  let v = BigInt(s); const neg = v < 0n; if (neg) v = -v;
+  const frac = (v % 1000000000n).toString().padStart(9, "0").replace(/0+$/, "");
+  return (neg ? "-" : "") + (v / 1000000000n).toString() + (frac ? "." + frac : "");
+}
+function current() {
+  const b = JSON.parse(JSON.stringify(original));
+  if (tampered && b.book && b.book.bids && b.book.bids.length) b.book.bids[0][1] = (BigInt(b.book.bids[0][1]) + 1n).toString();
+  return b;
+}
+function renderBook(b) {
+  const bids = (b.book && b.book.bids) || [], asks = (b.book && b.book.asks) || [];
+  const rows = Math.min(10, Math.max(bids.length, asks.length));
+  $("book-title").textContent = "Book · " + (b.symbol || "?") + " · update " + ((b.book && b.book.position) || "?");
+  let h = '<table><thead><tr><th>Bid size</th><th>Bid</th><th>Ask</th><th>Ask size</th></tr></thead><tbody>';
+  for (let i = 0; i < rows; i++) {
+    const bl = bids[i], al = asks[i];
+    h += "<tr><td" + (tampered && i === 0 ? ' class="changed"' : "") + ">" + (bl ? atoms(bl[1]) : "") + "</td><td>" + (bl ? atoms(bl[0]) : "") +
+      "</td><td>" + (al ? atoms(al[0]) : "") + "</td><td>" + (al ? atoms(al[1]) : "") + "</td></tr>";
+  }
+  h += "</tbody></table>";
+  if (bids.length > rows || asks.length > rows) h += '<p class="muted">Showing ' + rows + " rows of a book with " + bids.length + " bids and " + asks.length + " asks; the hash covers every level.</p>";
+  $("book").innerHTML = h;
+}
+async function check() {
+  const mine = ++run;
+  const b = current();
+  let r;
+  try { r = await TapeProof.verifyBundle(b, { pinned: PINNED }); }
+  catch (e) { r = { ok: false, steps: [{ name: "bundle", ok: false, detail: "could not be checked: " + e.message }], fingerprints: {}, signed_by: [] }; }
+  if (mine !== run) return;
+  const names = ["bundle", "book hash", "leaf hash", "inclusion", "keys", "signatures"];
+  $("steps").innerHTML = names.map((n) => {
+    const s = r.steps.find((x) => x.name === n);
+    const mark = !s ? '<span class="skip" aria-label="not run">·</span>' : s.ok ? '<span class="ok" aria-label="passed">✓</span>' : '<span class="no" aria-label="failed">✗</span>';
+    return "<li>" + mark + "<span>" + esc(n) + '</span><span class="detail">' + esc(s ? s.detail : "not run") + "</span></li>";
+  }).join("");
+  const failed = r.steps.find((s) => !s.ok);
+  $("verdict").className = "verdict " + (r.ok ? "pass" : "fail");
+  $("verdict").textContent = r.ok ? "Verified: this book is on the tape, under a head signed by voters " + r.signed_by.join(", ") + "."
+    : "Not verified: failed at " + (failed ? failed.name : "an unknown step") + (failed ? " (" + failed.detail + ")" : "") + ".";
+  try { renderBook(b); } catch (e) { $("book").innerHTML = '<p class="empty">The book could not be shown.</p>'; }
+  const hd = b.head || {};
+  $("head").innerHTML = [["Incarnation", hd.incarnation], ["Tick", hd.tick], ["Tree size", hd.tree_size], ["Root", hd.root],
+    ["Entry", b.leaf && b.leaf.index], ["Proof hashes", Array.isArray(b.proof) ? b.proof.length : "?"]]
+    .map(([k, v]) => "<dt>" + k + "</dt><dd>" + esc(v === undefined ? "?" : v) + "</dd>").join("");
+  $("keys").innerHTML = ["1", "2", "3"].map((v) => {
+    const fp = r.fingerprints[v];
+    const pin = PINNED ? (fp && PINNED[v] === fp ? " · matches published" : " · not the published key") : "";
+    return "<dt>Voter " + v + "</dt><dd>" + (fp ? esc(fp) + esc(pin) : "no key") + (r.signed_by.includes(Number(v)) ? " · signed" : "") + "</dd>";
+  }).join("");
+}
+function load(bundle, label) {
+  original = bundle; tampered = false;
+  $("tamper").disabled = false; $("tamper").setAttribute("aria-pressed", "false"); $("tamper").textContent = "Change one bid size";
+  $("source").textContent = label;
+  check();
+}
+$("file").addEventListener("change", async (ev) => {
+  const f = ev.target.files[0]; if (!f) return;
+  try { load(JSON.parse(await f.text()), f.name); }
+  catch (e) { $("verdict").className = "verdict fail"; $("verdict").textContent = "Not verified: " + f.name + " is not valid JSON."; }
+});
+$("tamper").addEventListener("click", () => {
+  tampered = !tampered;
+  $("tamper").setAttribute("aria-pressed", String(tampered));
+  $("tamper").textContent = tampered ? "Undo the change" : "Change one bid size";
+  check();
+});
+if (!window.crypto || !window.crypto.subtle) { $("verdict").className = "verdict fail"; $("verdict").textContent = "This browser has no WebCrypto, so it cannot check a bundle."; }
+else if (SAMPLE) load(SAMPLE, "Example bundle built into this page");
+</script>
