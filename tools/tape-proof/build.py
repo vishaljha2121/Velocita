@@ -28,6 +28,8 @@ def main():
                 pinned[m.group(1)] = m.group(2)
         if sorted(pinned) != ["1", "2", "3"]:
             sys.exit("fingerprints file must name voters 1, 2 and 3")
+    if a.sample and not pathlib.Path(a.sample).is_file():
+        sys.exit(f"{a.sample} does not exist; write one first with velocita-tape-verify --book SYMBOL --until-seq N --bundle FILE")
     sample = json.loads(pathlib.Path(a.sample).read_text()) if a.sample else None
     page = (here / "page.html").read_text()
     script = (here / "check.js").read_text()
