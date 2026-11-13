@@ -223,6 +223,9 @@ class ProofTests(unittest.TestCase):
         for needle in ("src=", "href=\"http", "fetch(", "XMLHttpRequest", "import(", "WebSocket", "sendBeacon", "@import", "url("):
             self.assertNotIn(needle, text, needle)
         self.assertIn("verifyBundle", text)
+        self.assertTrue(text.startswith("<!doctype html>"))
+        self.assertIn('<meta charset="utf-8">', text[:200])
+        self.assertTrue(text.isascii(), "non-ASCII characters break when a browser guesses the encoding")
 
     def test_no_payload_bytes_reach_the_bundle(self):
         _, b = self.good()

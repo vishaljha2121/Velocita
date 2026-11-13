@@ -1,3 +1,7 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Tape Proof Check</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
@@ -94,7 +98,7 @@ function current() {
 function renderBook(b) {
   const bids = (b.book && b.book.bids) || [], asks = (b.book && b.book.asks) || [];
   const rows = Math.min(10, Math.max(bids.length, asks.length));
-  $("book-title").textContent = "Book · " + (b.symbol || "?") + " · update " + ((b.book && b.book.position) || "?");
+  $("book-title").textContent = "Book \u00b7 " + (b.symbol || "?") + " \u00b7 update " + ((b.book && b.book.position) || "?");
   let h = '<table><thead><tr><th>Bid size</th><th>Bid</th><th>Ask</th><th>Ask size</th></tr></thead><tbody>';
   for (let i = 0; i < rows; i++) {
     const bl = bids[i], al = asks[i];
@@ -115,7 +119,7 @@ async function check() {
   const names = ["bundle", "book hash", "leaf hash", "inclusion", "keys", "signatures"];
   $("steps").innerHTML = names.map((n) => {
     const s = r.steps.find((x) => x.name === n);
-    const mark = !s ? '<span class="skip" aria-label="not run">·</span>' : s.ok ? '<span class="ok" aria-label="passed">✓</span>' : '<span class="no" aria-label="failed">✗</span>';
+    const mark = !s ? '<span class="skip" aria-label="not run">\u00b7</span>' : s.ok ? '<span class="ok" aria-label="passed">\u2713</span>' : '<span class="no" aria-label="failed">\u2717</span>';
     return "<li>" + mark + "<span>" + esc(n) + '</span><span class="detail">' + esc(s ? s.detail : "not run") + "</span></li>";
   }).join("");
   const failed = r.steps.find((s) => !s.ok);
@@ -129,8 +133,8 @@ async function check() {
     .map(([k, v]) => "<dt>" + k + "</dt><dd>" + esc(v === undefined ? "?" : v) + "</dd>").join("");
   $("keys").innerHTML = ["1", "2", "3"].map((v) => {
     const fp = r.fingerprints[v];
-    const pin = PINNED ? (fp && PINNED[v] === fp ? " · matches published" : " · not the published key") : "";
-    return "<dt>Voter " + v + "</dt><dd>" + (fp ? esc(fp) + esc(pin) : "no key") + (r.signed_by.includes(Number(v)) ? " · signed" : "") + "</dd>";
+    const pin = PINNED ? (fp && PINNED[v] === fp ? " \u00b7 matches published" : " \u00b7 not the published key") : "";
+    return "<dt>Voter " + v + "</dt><dd>" + (fp ? esc(fp) + esc(pin) : "no key") + (r.signed_by.includes(Number(v)) ? " \u00b7 signed" : "") + "</dd>";
   }).join("");
 }
 function load(bundle, label) {
