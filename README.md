@@ -45,9 +45,13 @@ flowchart LR
 - **Verifier** (`velocita-tape-verify`) needs only the log, the heads and the public keys: no network, no trust in
   the cluster.
 - **Report** (`tools/tape-report.py`) turns verified segments into a feed-quality report, aggregates only.
+- **Proof page** (`tools/tape-proof/`) checks one book at one moment in any browser: it recomputes the book's hash,
+  climbs the Merkle proof and verifies the signatures, trusting only the published key fingerprints.
+- **Book-builder kit** (`tools/book-kit/`) is a reference order-book builder plus a harness that checks any client's
+  books against the tape's, update by update.
 
 Design records: [ADR 0030](docs/adr/0030-the-verifiable-tape-is-a-separate-raft-group.md) (the locked design),
-[guarantees](docs/tape/GUARANTEES.md), [decision log](docs/tape/DECISIONS.md) (D-01 to D-64, every choice with its
+[guarantees](docs/tape/GUARANTEES.md), [decision log](docs/tape/DECISIONS.md) (D-01 to D-66, every choice with its
 reason), [runbook](docs/tape/RUNBOOK.md), [test map](docs/tape/TEST_MAP.md).
 
 ## Results
@@ -103,6 +107,21 @@ published in the same batch, DEPTH first. Most remaining unexplained trades prin
 as a level on the published book while other levels on that side shrank, which raises a question for the venue
 rather than a conclusion: is a trade price per fill, or one price per taker order?
 
+### Book builders against the tape
+
+The tape knows the correct book after every update, so it can grade any program that builds books from the feed.
+The reference builder replayed recorder 1's own stream from the 16:00 UTC segment (23,818 DEPTH messages, all
+twelve books) and matched the tape on every one of the 23,723 books it reported valid. Five deliberately broken
+clients, one per mistake the feed makes easy, were run on the same stream:
+
+| Broken client | On the real stream |
+|---|---|
+| Adds update sizes instead of replacing them | Caught: NVDAC bid 165.516 shows 0.266, the tape has 0.133 |
+| Treats a snapshot's number as the last update applied | Caught at TSLAC on the second check |
+| Parses decimals as floating point | Caught: 2.142999999 where the tape has 2.143 |
+| Reads the spec's `depth` field instead of the live `order_count` | Caught: order count 0 where the tape has 2 |
+| Uses the book before SNAPSHOT_COMPLETE | No harm on this segment: every real snapshot arrived as one message (caught on a two-part synthetic snapshot) |
+
 ### What running it taught us
 
 The tape ran on home Wi-Fi with Tailscale between machines, and that exposed real problems that a localhost test
@@ -114,7 +133,8 @@ per-host watchdog that stops the tape if it ever floods the network and restarts
 
 ## Examples
 
-These outputs are real, from the archived 16:00 UTC segment.
+These outputs are real, from the archived 16:00 UTC segment, except the kit run, which uses the shipped synthetic
+fixture.
 
 ### Verify a segment offline
 
@@ -153,17 +173,68 @@ velocita-tape-verify ... --book NVDAC-USDC --until-seq 173921
 
 ```json
 {
-  "symbol": "NVDAC-USDC", "found": true, "log_index": 111394,
-  "hash": "7c06570573189dfdd477db1a50a857b4190d35bebc0ada8ea9ec3ea28ef45f21",
-  "bids": [[163613000000, 39000000], [163572000000, 59000000], [163510000000, 89000000]],
-  "asks": [[163807000000, 39000000], [163848000000, 59000000], [163910000000, 89000000]],
-  "position": 173921,
+  "symbol": "NVDAC-USDC", "found": true, "log_index": 111428,
+  "hash": "8d67705e95a279cef0f1260099144bdb9e48ec2f9995b68cf20aefeee41bdaf8",
+  "bids": [[163530000000, 89000000], [163326000000, 97000000], [162497000000, 970000000], ...],
+  "asks": [[163807000000, 39000000], [163848000000, 59000000], [163910000000, 89000000], ...],
+  "position": 173922,
   "inclusion": {"head_tick": 4500, "proof_hashes": 17, "verified": true}
 }
 ```
 
-Prices and sizes are integers in units of 1e-9 (163613000000 is 163.613). The book hash is the same on every
-machine, and the inclusion proof ties this exact book state to signed head 4500.
+This is the book just after update 173921 (`position` is the next update it expects). Prices and sizes are
+integers in units of 1e-9 (163530000000 is 163.53). The book hash is the same on every machine, and the inclusion
+proof ties this exact book state to signed head 4500.
+
+### Check a book in a browser
+
+```sh
+velocita-tape-verify ... --book NVDAC-USDC --until-seq 173921 --bundle nvdac.json
+python3 tools/tape-proof/build.py --out proof.html \
+    --fingerprints <(tools/tape-key-ceremony.sh fingerprints) --sample nvdac.json
+```
+
+The verifier writes a 2.8 KB proof bundle (the book's levels, its log entry's fields, 17 proof hashes, signed head
+4500 and the three public keys) only after the whole segment verifies. `proof.html` is one self-contained file
+with no network requests. Opened in a browser it recomputes everything with WebCrypto and shows:
+
+```text
+Verified: this book is on the tape, under a head signed by voters 1, 2, 3.
+  ✓ bundle      well formed
+  ✓ book hash   8d67705e95a279cef0f1260099144bdb9e48ec2f9995b68cf20aefeee41bdaf8
+  ✓ leaf hash   5d38f2e382fc7e62c513e324568f1203fd9b548fbd65c33023cbcaa86cd3af0f
+  ✓ inclusion   entry 111428 is in the tree of 120615
+  ✓ keys        all keys match the published fingerprints
+  ✓ signatures  3 of 3 voters signed this head
+```
+
+A "Change one bid size" button alters a single level and the page fails at `inclusion`. A bundle that brings keys
+other than the published ones fails at `keys`. `--until-seq` counts each book's own updates, so every book has its
+own range; if a value is out of range, the verifier prints the range that works.
+
+### Test an order-book client against the tape
+
+```sh
+python3 tools/book-kit/conform.py --client "python3 tools/book-kit/reference_book.py" \
+    --frames tools/book-kit/fixtures/synthetic-frames.txt --key tools/book-kit/fixtures/synthetic-key.tsv \
+    --scenario clean --scenario drop
+```
+
+The harness sends the client one DEPTH message per line (`{"frame": "..."}`) and the client answers each with its
+book's state: `building`, `stale` (asking for a resend), or `valid` with every level and the next update number it
+expects. Each valid book is compared with the tape's book for that update; the first wrong level fails the run.
+The `drop` scenario removes one update, and a correct client must stop calling that book valid until a fresh
+snapshot rebuilds it:
+
+```json
+{"scenario": "drop", "passed": true, "missing": {"symbol": "NVDAC-USDC", "seqnum": 10},
+ "counts": {"frames": 16, "valid": 10, "checked": 10, "unchecked": 0, "building": 5, "stale": 1, "resubscribes": 1}}
+```
+
+Other scenarios are `duplicate`, `swap` and `late-snapshot`. A client in any language works if it speaks the line
+protocol; a client that hangs, exits or prints something that is not JSON fails within the time limit. Against a
+real archived segment, `--tape SEGMENT --recorder N` verifies the segment first and then uses that recorder's own
+stream and the tape's answer key. The shipped fixtures are synthetic.
 
 ### Produce the feed-quality report
 
@@ -202,13 +273,14 @@ Needs CMake, Ninja, a C++20 compiler and OpenSSL 3. The recorder tests need Pyth
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DVELOCITA_BUILD_TAPE=ON \
     -DVELOCITA_TAPE_FIXTURE_PYTHON=/path/to/python-with-websockets
 cmake --build build
-ctest --test-dir build -R '^tape-'
+ctest --test-dir build -R '^(tape-|book-kit)'
 ```
 
-Fourteen suites cover the tape: the reducer against an independent Python reference (including two real
+Sixteen suites cover the tape and its tools: the reducer against an independent Python reference (including two real
 connections replayed), the replica under restarts, slow and lossy links, the voters, the recorder against a
-scripted feed that behaves like the real one, the submitter's budgets, the watchdog, rotation, the report, and
-symbol checks proving the reducer is pure and no tape binary can trade. A mutation suite
+scripted feed that behaves like the real one, the submitter's budgets, the watchdog, rotation, the report, the proof page
+(every field change caught, four mutants of the browser check killed), the book-builder kit (five trap clients),
+and symbol checks proving the reducer is pure and no tape binary can trade. A mutation suite
 (`tests/mutation_tape.py`) plants 34 bugs and every one is caught. [TEST_MAP.md](docs/tape/TEST_MAP.md) maps all 92
 test cases in the ADR to these tests.
 
@@ -219,6 +291,8 @@ test cases in the ADR to these tests.
 | `include/velocita/tape/`, `src/tape_*.cpp` | Frame scanner, entry codec, Merkle tree, reducer, WAL, replica, voter, recorder, WebSocket client, verifier |
 | `tools/tape-report.py` | Feed-quality report and trade-consistency checker |
 | `tools/tape-local-run.py` | Three voters and three recorders on one machine |
+| `tools/tape-proof/` | Browser proof check: `check.js`, the page and its build script |
+| `tools/book-kit/` | Reference book builder, conformance harness and synthetic fixtures |
 | `tools/tape-key-ceremony.sh`, `tape-ship.sh`, `tape-render-configs.py` | Keys, shipping source to hosts, host configs |
 | `deploy/tape/` | Container image, systemd units, rotation, watchdog, Prometheus and Grafana |
 | `tests/test_tape_*.py`, `tests/tape_*_tests.cpp` | Tests; `tests/tape_oracles/` is the independent reference |
@@ -234,6 +308,8 @@ group with its own ports, keys and data. The trading code is still here and stil
 
 ## Data and scope
 
-Recorded feed data stays on the recording machines and is never committed; reports carry aggregates only. All
+Recorded feed data stays on the recording machines and is never committed; reports carry aggregates only. Proof
+bundles hold one book's levels and stay private like the rest of the output; the book-builder kit's committed
+fixtures are synthetic, and its reports never contain message text. All
 three recorders sit on one home network, so results describe delivery to one location, and only the no-login feed
 tier is measured. Raw-feed redistribution is out of scope.
