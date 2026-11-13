@@ -93,6 +93,8 @@ int main(int argc, char** argv) {
     std::filesystem::path previous_head;
     std::filesystem::path extract_path;
     std::filesystem::path bundle_path;
+    std::filesystem::path frames_path;
+    int frames_recorder = 0;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : std::string(); };
@@ -109,12 +111,16 @@ int main(int argc, char** argv) {
         else if (a == "--previous-head") previous_head = next();
         else if (a == "--extract") extract_path = next();
         else if (a == "--bundle") bundle_path = next();
+        else if (a == "--frames") {
+            frames_recorder = std::stoi(next());
+            frames_path = next();
+        }
         else {
             std::cerr << "usage: velocita-tape-verify --wal FILE [--heads DIR --key PUB1 --key PUB2 --key PUB3 --incarnation N]\n"
                          "       [--compare-wal OTHER_FILE]\n"
                          "       [--verdict-ticks N --head-every K --tick-ms T] [--book SYMBOL --until-seq N]\n"
                          "       [--previous-head HEAD_FILE_OF_THE_PREVIOUS_SEGMENT] [--extract ROWS.tsv]\n"
-                         "       [--book SYMBOL --until-seq N --bundle PROOF.json]\n";
+                         "       [--book SYMBOL --until-seq N --bundle PROOF.json] [--frames RECORDER FRAMES.txt]\n";
             return 64;
         }
     }
@@ -170,6 +176,13 @@ int main(int argc, char** argv) {
             *s.rows << '\n';
         };
         std::set<std::pair<std::string, std::uint64_t>> trades_seen;
+        std::ofstream frames;
+        const auto frames_temporary = std::filesystem::path(frames_path.string() + ".tmp");
+        if (!frames_path.empty()) {
+            if (frames_recorder < 1 || frames_recorder > 3) throw std::runtime_error("--frames needs a recorder from 1 to 3");
+            frames.open(frames_temporary, std::ios::trunc | std::ios::binary);
+            if (!frames) throw std::runtime_error("cannot write " + frames_temporary.string());
+        }
         const auto symbol_index = [&](std::string_view name) -> int {
             for (std::uint8_t i = 0; i < state->symbol_count; ++i)
                 if (state->symbols[i].view() == name) return i;
@@ -212,6 +225,14 @@ int main(int argc, char** argv) {
                             rows << '\t' << passive << '\n';
                         }
                     }
+                }
+            }
+            if (frames.is_open()) {
+                const auto decoded_frame = decode_entry(e.bytes);
+                if (const auto* o = decoded_frame ? std::get_if<Observation>(&*decoded_frame) : nullptr;
+                    o && o->header.recorder == frames_recorder && o->channel == Channel::depth) {
+                    const std::string_view text(reinterpret_cast<const char*>(o->payload.data()), o->payload.size());
+                    if (text.find('\n') == std::string_view::npos) frames << text << '\n';
                 }
             }
             const auto result = apply_entry(*state, config, e.index, e.bytes, on_close, &sink);
@@ -262,6 +283,9 @@ int main(int argc, char** argv) {
                     if (b.asks.size) rows << b.asks.levels[0].price << '\t' << b.asks.levels[0].qty;
                     else rows << "-\t-";
                     rows << '\t' << utc << '\n';
+                    if (b.state == BookState::valid)
+                        rows << "K\t" << e.index << '\t' << state->symbols[sym].view() << '\t' << b.position << '\t'
+                             << v2::to_hex(b.hash) << '\n';
                 }
             }
             leaves.push_back(result.leaf_hash);
@@ -343,6 +367,11 @@ int main(int argc, char** argv) {
                 g.previous_tree_size != prev.tree_size || g.previous_root != prev.root)
                 fail("segment link", prev.tick, v2::to_hex(prev.root) + "@" + std::to_string(prev.tree_size),
                      v2::to_hex(g.previous_root) + "@" + std::to_string(g.previous_tree_size));
+        }
+        if (frames.is_open()) {
+            if (!frames.flush()) throw std::runtime_error("cannot write " + frames_temporary.string());
+            frames.close();
+            std::filesystem::rename(frames_temporary, frames_path);
         }
         if (!bundle_path.empty()) {
             if (!book_index)

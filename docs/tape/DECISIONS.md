@@ -559,3 +559,16 @@ stored hash; `build.py` inlines it into one `proof.html` with no external reques
 brings its own keys fails at "keys"; a key listed twice counts once. Every 64-bit value is a decimal string because
 JSON numbers lose precision above 2^53. Tests: `tape-proof-tests` (10 tests, 4 mutants killed); the real NVDAC-USDC
 bundle from segment 1794499200 passes 3 of 3 in Node and Chrome.
+
+**D-66. Book-builder conformance kit.** `tools/book-kit/reference_book.py` is a readable reference builder for the
+DEPTH channel (snapshot `seqnum` is the next update, updates set level totals, `order_count`, integers at 10^-9,
+any jump is a gap and the book is stale until a newer snapshot). `tools/book-kit/conform.py` plays a stream to any
+client over a one-line-per-message JSON protocol and checks every book the client reports valid against the tape's
+book at the same next-expected `seqnum`, by book hash; it names the first differing level, fails a valid report
+after a missing update before a new snapshot, fails a book that goes backwards, and bounds every answer by a time
+limit. The answer key is a new `K` extract row (book, position, hash), so the feed report is unaffected; the
+stream is `velocita-tape-verify --frames R`, written only from a verified run, and `--tape` mode uses neither unless
+the segment verifies. Shipped fixtures are synthetic (`tools/book-kit/fixtures`); real frames stay local. On NUC1's
+real stream from segment 1794499200 the reference builder matched all 23,723 valid books; four of the five trap
+clients failed within the first books, and serving before SNAPSHOT_COMPLETE did no harm there because every real
+snapshot was a single message. Tests: `book-kit-tests` (11).
