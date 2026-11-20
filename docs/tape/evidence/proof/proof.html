@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tape Proof Check</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root {
+  --bg: #f3f5f6; --surface: #ffffff; --fg: #162024; --muted: #59676d; --rule: #d6dee2;
+  --accent: #0d6b66; --soft: #e1efed; --good: #0a7d0a; --good-soft: #e3f3e3; --bad: #b42d2d; --bad-soft: #f8e4e4;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1517; --surface: #161e21; --fg: #e3eaec; --muted: #9aa9af; --rule: #2a363b;
+    --accent: #5cc4bc; --soft: #15302e; --good: #6fd36f; --good-soft: #142b14; --bad: #f08a8a; --bad-soft: #351818; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1517; --surface: #161e21; --fg: #e3eaec; --muted: #9aa9af; --rule: #2a363b;
+  --accent: #5cc4bc; --soft: #15302e; --good: #6fd36f; --good-soft: #142b14; --bad: #f08a8a; --bad-soft: #351818; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; }
+main { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+h1 { font-size: 1.9rem; margin: 0; text-wrap: balance; line-height: 1.2; }
+h2 { font-size: 1.05rem; margin: 0 0 8px; }
+p { margin: 0; max-width: 70ch; }
+.muted { color: var(--muted); }
+.mono, code { font-family: var(--mono); font-size: 0.85em; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button, label.file { font: inherit; font-size: 0.9rem; border: 1px solid var(--rule); background: var(--surface); color: var(--fg);
+  padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+button:hover, label.file:hover { border-color: var(--accent); color: var(--accent); }
+button:focus-visible, label.file:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+button[aria-pressed="true"] { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+input[type=file] { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.verdict { border-radius: 4px; padding: 14px 16px; font-weight: 600; border: 1px solid var(--rule); background: var(--surface); }
+.verdict.pass { background: var(--good-soft); border-color: var(--good); color: var(--good); }
+.verdict.fail { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 16px; min-width: 0; }
+ol.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+ol.steps li { display: grid; grid-template-columns: 1.4em 7.5em 1fr; gap: 8px; align-items: baseline; }
+ol.steps .detail { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
+.ok { color: var(--good); font-weight: 700; } .no { color: var(--bad); font-weight: 700; } .skip { color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 0.88rem; }
+th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--rule); }
+th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+td.changed { background: var(--bad-soft); color: var(--bad); }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+dt { color: var(--muted); } dd { margin: 0; font-family: var(--mono); font-size: 0.82rem; overflow-wrap: anywhere; min-width: 0; }
+.empty { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<main>
+  <header style="display:flex;flex-direction:column;gap:8px">
+    <h1>Tape Proof Check</h1>
+    <p>Checks, in this browser and without sending anything anywhere, that an order book at one moment is on the
+      Verifiable Tape's signed record. It recomputes the book's hash from the levels below, climbs the Merkle proof
+      to the tree root, and verifies the voters' Ed25519 signatures on that root. The only thing it trusts is the
+      voters' published key fingerprints.</p>
+  </header>
+  <div class="bar">
+    <label class="file">Open a proof bundle<input type="file" id="file" accept=".json,application/json"></label>
+    <button type="button" id="tamper" aria-pressed="false" disabled>Change one bid size</button>
+    <span class="muted" id="source"></span>
+  </div>
+  <div class="verdict" id="verdict" role="status">No bundle loaded. Open a <code>.json</code> bundle written by <code>velocita-tape-verify --bundle</code>.</div>
+  <section class="panel"><h2>Checks</h2><ol class="steps" id="steps"><li class="empty">Waiting for a bundle.</li></ol></section>
+  <div class="grid">
+    <section class="panel"><h2 id="book-title">Book</h2><div class="table-wrap" id="book"><p class="empty">No book yet.</p></div></section>
+    <section class="panel"><h2>Signed head</h2><dl id="head"><dt>Head</dt><dd class="empty">none</dd></dl>
+      <h2 style="margin-top:14px">Voter keys</h2><dl id="keys"><dt>Keys</dt><dd class="empty">none</dd></dl></section>
+  </div>
+  <p class="muted">Prices and sizes are shown in the tape's integer atoms divided by 10<sup>9</sup>. The fingerprint of a key is the SHA-256 of its DER encoding, as printed by the key ceremony.</p>
+</main>
+<script>// Checks a Verifiable Tape proof bundle with WebCrypto only: book hash, leaf hash, inclusion proof, signed head.
+"use strict";
+(function (root) {
+  const enc = new TextEncoder();
+  const SPKI_ED25519 = hexBytes("302a300506032b6570032100");
+
+  function hexBytes(hex) {
+    const out = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return out;
+  }
+
+  function bytesHex(bytes) {
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  class Writer {
+    constructor() { this.parts = []; }
+    bytes(b) { this.parts.push(b instanceof Uint8Array ? b : Uint8Array.from(b)); return this; }
+    text(s) { return this.bytes(enc.encode(s)); }
+    uint(value, size) {
+      let v = BigInt.asUintN(size * 8, BigInt(value));
+      const b = new Uint8Array(size);
+      for (let i = 0; i < size; i++) { b[i] = Number(v & 0xffn); v >>= 8n; }
+      return this.bytes(b);
+    }
+    done() {
+      const out = new Uint8Array(this.parts.reduce((n, p) => n + p.length, 0));
+      let at = 0;
+      for (const p of this.parts) { out.set(p, at); at += p.length; }
+      return out;
+    }
+  }
+
+  async function sha256(subtle, bytes) {
+    return new Uint8Array(await subtle.digest("SHA-256", bytes));
+  }
+
+  function equal(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  const isHex = (s, n) => typeof s === "string" && s.length === n && /^[0-9a-f]*$/.test(s);
+  const isUint = (s) => typeof s === "string" && /^[0-9]{1,20}$/.test(s) && BigInt(s) < 2n ** 64n;
+  const isInt = (s) => typeof s === "string" && /^-?[0-9]{1,19}$/.test(s) && BigInt(s) >= -(2n ** 63n) && BigInt(s) < 2n ** 63n;
+  const isSmall = (v, max) => Number.isInteger(v) && v >= 0 && v <= max;
+
+  function shapeProblem(b) {
+    if (!b || typeof b !== "object" || b.version !== 1) return "not a version 1 bundle";
+    if (typeof b.symbol !== "string" || !b.symbol || enc.encode(b.symbol).length > 255) return "symbol";
+    const k = b.book;
+    if (!k || !isUint(k.position) || !Array.isArray(k.bids) || !Array.isArray(k.asks)) return "book";
+    for (const side of [k.bids, k.asks]) {
+      if (side.length > 0xffff) return "book side";
+      for (const l of side)
+        if (!Array.isArray(l) || l.length !== 3 || !isInt(l[0]) || !isInt(l[1]) || !isSmall(l[2], 0xffffffff)) return "book level";
+    }
+    const f = b.leaf;
+    if (!f || !isUint(f.index) || BigInt(f.index) < 1n || !isHex(f.entry_digest, 64)) return "leaf";
+    for (const [name, max] of [["code", 255], ["type", 255], ["stream", 255], ["book_state", 255], ["flags", 0xffff], ["closes", 0xffff]])
+      if (!isSmall(f[name], max)) return "leaf " + name;
+    if (!Array.isArray(b.proof) || b.proof.length > 64 || !b.proof.every((h) => isHex(h, 64))) return "proof";
+    const h = b.head;
+    if (!h || !isUint(h.incarnation) || !isUint(h.tick) || !isUint(h.tree_size) || !isHex(h.root, 64)) return "head";
+    if (!h.signatures || typeof h.signatures !== "object") return "head signatures";
+    for (const [v, s] of Object.entries(h.signatures)) if (!["1", "2", "3"].includes(v) || !isHex(s, 128)) return "head signatures";
+    if (!b.keys || typeof b.keys !== "object") return "keys";
+    for (const [v, s] of Object.entries(b.keys)) if (!["1", "2", "3"].includes(v) || !isHex(s, 64)) return "keys";
+    return null;
+  }
+
+  async function bookHash(subtle, b) {
+    const w = new Writer().text("velocita-tape/v1/book");
+    const symbol = enc.encode(b.symbol);
+    w.uint(symbol.length, 1).bytes(symbol).uint(b.book.position, 8);
+    for (const side of [b.book.bids, b.book.asks]) {
+      w.uint(side.length, 2);
+      for (const [price, qty, count] of side) w.uint(price, 8).uint(qty, 8).uint(count, 4);
+    }
+    return sha256(subtle, w.done());
+  }
+
+  async function leafHash(subtle, b, book) {
+    const f = b.leaf;
+    const w = new Writer().uint(0, 1).text("velocita-tape/v1/leaf").uint(f.index, 8).bytes(hexBytes(f.entry_digest));
+    w.uint(0xe0, 1).uint(f.code, 1).uint(f.type, 1).uint(f.stream, 1).uint(f.book_state, 1);
+    w.bytes(book).uint(f.flags, 2).uint(f.closes, 2);
+    return sha256(subtle, w.done());
+  }
+
+  async function nodeHash(subtle, left, right) {
+    return sha256(subtle, new Writer().uint(1, 1).bytes(left).bytes(right).done());
+  }
+
+  async function rootFromProof(subtle, leaf, index, size, proof) {
+    if (index >= size) return null;
+    let fn = index, sn = size - 1n, r = leaf;
+    for (const hex of proof) {
+      const p = hexBytes(hex);
+      if (sn === 0n) return null;
+      if ((fn & 1n) === 1n || fn === sn) {
+        r = await nodeHash(subtle, p, r);
+        if ((fn & 1n) === 0n) while (fn !== 0n && (fn & 1n) === 0n) { fn >>= 1n; sn >>= 1n; }
+      } else {
+        r = await nodeHash(subtle, r, p);
+      }
+      fn >>= 1n;
+      sn >>= 1n;
+    }
+    return sn === 0n ? r : null;
+  }
+
+  function headMessage(h) {
+    return new Writer().text("velocita-tape/v1").uint(h.incarnation, 8).uint(h.tick, 8).uint(h.tree_size, 8)
+      .bytes(hexBytes(h.root)).done();
+  }
+
+  async function fingerprint(subtle, rawHex) {
+    return bytesHex(await sha256(subtle, new Writer().bytes(SPKI_ED25519).bytes(hexBytes(rawHex)).done()));
+  }
+
+  async function verifyBundle(bundle, options) {
+    const subtle = (options && options.subtle) || root.crypto.subtle;
+    const pinned = (options && options.pinned) || null;
+    const steps = [];
+    const result = { ok: false, steps, fingerprints: {}, signed_by: [] };
+    const step = (name, ok, detail) => { steps.push({ name, ok, detail }); return ok; };
+
+    const problem = shapeProblem(bundle);
+    if (!step("bundle", !problem, problem ? "malformed: " + problem : "well formed")) return result;
+
+    const book = await bookHash(subtle, bundle);
+    step("book hash", true, bytesHex(book));
+    const leaf = await leafHash(subtle, bundle, book);
+    step("leaf hash", true, bytesHex(leaf));
+
+    const index = BigInt(bundle.leaf.index) - 1n;
+    const size = BigInt(bundle.head.tree_size);
+    const root2 = await rootFromProof(subtle, leaf, index, size, bundle.proof);
+    const rootOk = root2 !== null && equal(root2, hexBytes(bundle.head.root));
+    if (!step("inclusion", rootOk, rootOk ? "entry " + bundle.leaf.index + " is in the tree of " + bundle.head.tree_size
+      : "the proof does not lead to the head's root")) return result;
+
+    for (const [voter, raw] of Object.entries(bundle.keys)) result.fingerprints[voter] = await fingerprint(subtle, raw);
+    if (pinned) {
+      const wrong = Object.keys(result.fingerprints).filter((v) => pinned[v] !== result.fingerprints[v]);
+      if (!step("keys", wrong.length === 0, wrong.length ? "voter " + wrong.join(", ") + " key is not the published key"
+        : "all keys match the published fingerprints")) return result;
+    } else {
+      step("keys", true, "not pinned; compare the fingerprints with the published ones");
+    }
+
+    const message = headMessage(bundle.head);
+    const seen = new Set();
+    for (const voter of ["1", "2", "3"]) {
+      const raw = bundle.keys[voter], sig = bundle.head.signatures[voter];
+      if (!raw || !sig || seen.has(raw)) continue;
+      let good = false;
+      try {
+        const key = await subtle.importKey("raw", hexBytes(raw), { name: "Ed25519" }, false, ["verify"]);
+        good = await subtle.verify({ name: "Ed25519" }, key, hexBytes(sig), message);
+      } catch (e) {
+        if (e && e.name === "NotSupportedError") {
+          step("signatures", false, "this browser cannot check Ed25519 signatures");
+          return result;
+        }
+      }
+      if (good) { seen.add(raw); result.signed_by.push(Number(voter)); }
+    }
+    const enough = result.signed_by.length >= 2;
+    step("signatures", enough, result.signed_by.length + " of 3 voters signed this head" + (enough ? "" : "; at least 2 are needed"));
+    result.ok = enough;
+    return result;
+  }
+
+  const api = { verifyBundle, bookHash, leafHash, headMessage, fingerprint, bytesHex, hexBytes };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  else root.TapeProof = api;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+</script>
+<script>
+const PINNED = {"1":"d8486f20c11a37ec2de1fc94ebef6c7e8a0f15533b6a7a9751cf654d8b0b1807","2":"7b886f91f0a3faf7518a50fe997f48c4ed12432a8762a98c14ba2d51bdf60d45","3":"5fb8b28617327d21903d272c3c28b56a75f8d840b5359412f1fcb104ca2780f6"};
+const SAMPLE = {"version":1,"symbol":"NVDAC-USDC","book":{"position":"173922","bids":[["163530000000","89000000",1],["163326000000","97000000",3],["162497000000","970000000",1],["161928000000","7000000",1],["161915000000","1460000000",1],["161087000000","2202000000",1]],"asks":[["163807000000","39000000",1],["163848000000","59000000",1],["163910000000","89000000",1],["164141000000","25000000",1],["164250000000","34000000",1],["164464000000","963000000",1],["164545000000","60000000",1],["164574000000","35000000",1],["164873000000","1444000000",1],["165090000000","40000000",1],["165487000000","2166000000",1],["166458000000","7000000",1],["172113000000","7000000",1],["173792000000","70000000",1],["225151000000","50000000",1]]},"leaf":{"index":"111428","entry_digest":"2402faf0cd89d5077da1d4c4d84941d9a25d5523ddc75287830d4a160a617da2","code":0,"type":1,"stream":32,"book_state":2,"flags":0,"closes":0},"proof":["29fecea29393a4009ea7fb5c509d73036ef2c44b1792146f5056891e1d342082","4c9e1526a302f527b77ce4cb6662ffa3ae8d958cd063c6f05c3be915c882bee5","bc91ea43bcc46c4a588ef916007282ed7eb08882468486244182447381eadcfd","03042a6e22bf9272ca184381b9f5ef9526cb613e95cc8fbaed6e62305df84fce","41691f5a9a45bd337dd1488bd65d2195acaab20d1d669f45c894b81dfa7acef6","96b8f94d05cbcdba7e95449cd0f60e1420e89a862f0a9fb3b07871ca5ab617d7","039cb40211d80e8784d09952686a2b829f020326912d38ad1e046c517b09b94a","c98c81f58bc6e73fdcddaca023001db1fed4f4f976950303bf7e54f59ac25d77","a41539d9b1a7c2da97252b2aae9cd939da20acca7d884a5c0d7349e75beb407b","477e4b9243ceb7dbf3ff94c37f7fe58d5329f720284dd4115ad79fddedf16f0c","fb663bd207749b4c1dfdeb4998482eff4f2fc2eb1e8252a4caf3936009ebe5db","150bda563d84d78ab15e4c0c6d190712217d9c60ac52caf00cd785175a5f6b9b","653954ee062e3d01d9c104c3342498d8bff4787a5f65ae82c89ca520ce9a4841","61f581d8a9a2e6fcfd16e2877e089894f47e2e2b33ea5a4c6e8aea450ebe98a5","728219029146effc42ecc2c5074b72afba9259962414ccb55a996cebd376fd87","68196648d6206a0c270500fd6e8448e46869d11398c26770b773a716a654a48b","262c0d3e0b3cfcb0dd68d076ed1cc0187fb7e1cee4e2cdc5de87662071aa3871"],"head":{"incarnation":"1794499200","tick":"4500","tree_size":"120615","root":"3b34f615d3d34d5501b77af375b3f3753a2f37f60035e2a80421cea54f14683e","signatures":{"1":"71f77ebd596580aebe24f8e72a422f93371ab896a25240c949801daf69bfeda73d0e0027f6edc88de943725baf0fcf0883e4af025763dfdc60043787ba96db03","2":"0518c5d21b60bd4ec9a9ff46d547c0908629796281a33e5ac45051c1363f24c07d24c12c4a9770ec4e1abc6afc136aab7e5bb880564abd12fa5a6bfeb151fa0c","3":"dd7e789173cdcd29888a1cfbd4b4b67f2563fbb71b7e01c239d560b27677c66694a15e29cc22bb05890395775f9091010f9365bf39ad7964ab440a3b5a6a1108"}},"keys":{"1":"0e173ceed7dbc1f9f255fa536a3757227a676281ddb9f3df9af33842b0a7f6ad","2":"d86792542622cfa31d79f0ae20e8cbdd9dcb19714e249f91fed871b63e8ba672","3":"5b563a0ce141205896619216d4d829dd9edee47e1739887b9f3efeed8f5ef414"}};
+let original = null, tampered = false, run = 0;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function atoms(s) {
+  let v = BigInt(s); const neg = v < 0n; if (neg) v = -v;
+  const frac = (v % 1000000000n).toString().padStart(9, "0").replace(/0+$/, "");
+  return (neg ? "-" : "") + (v / 1000000000n).toString() + (frac ? "." + frac : "");
+}
+function current() {
+  const b = JSON.parse(JSON.stringify(original));
+  if (tampered && b.book && b.book.bids && b.book.bids.length) b.book.bids[0][1] = (BigInt(b.book.bids[0][1]) + 1n).toString();
+  return b;
+}
+function renderBook(b) {
+  const bids = (b.book && b.book.bids) || [], asks = (b.book && b.book.asks) || [];
+  const rows = Math.min(10, Math.max(bids.length, asks.length));
+  $("book-title").textContent = "Book \u00b7 " + (b.symbol || "?") + " \u00b7 update " + ((b.book && b.book.position) || "?");
+  let h = '<table><thead><tr><th>Bid size</th><th>Bid</th><th>Ask</th><th>Ask size</th></tr></thead><tbody>';
+  for (let i = 0; i < rows; i++) {
+    const bl = bids[i], al = asks[i];
+    h += "<tr><td" + (tampered && i === 0 ? ' class="changed"' : "") + ">" + (bl ? atoms(bl[1]) : "") + "</td><td>" + (bl ? atoms(bl[0]) : "") +
+      "</td><td>" + (al ? atoms(al[0]) : "") + "</td><td>" + (al ? atoms(al[1]) : "") + "</td></tr>";
+  }
+  h += "</tbody></table>";
+  if (bids.length > rows || asks.length > rows) h += '<p class="muted">Showing ' + rows + " rows of a book with " + bids.length + " bids and " + asks.length + " asks; the hash covers every level.</p>";
+  $("book").innerHTML = h;
+}
+async function check() {
+  const mine = ++run;
+  const b = current();
+  let r;
+  try { r = await TapeProof.verifyBundle(b, { pinned: PINNED }); }
+  catch (e) { r = { ok: false, steps: [{ name: "bundle", ok: false, detail: "could not be checked: " + e.message }], fingerprints: {}, signed_by: [] }; }
+  if (mine !== run) return;
+  const names = ["bundle", "book hash", "leaf hash", "inclusion", "keys", "signatures"];
+  $("steps").innerHTML = names.map((n) => {
+    const s = r.steps.find((x) => x.name === n);
+    const mark = !s ? '<span class="skip" aria-label="not run">\u00b7</span>' : s.ok ? '<span class="ok" aria-label="passed">\u2713</span>' : '<span class="no" aria-label="failed">\u2717</span>';
+    return "<li>" + mark + "<span>" + esc(n) + '</span><span class="detail">' + esc(s ? s.detail : "not run") + "</span></li>";
+  }).join("");
+  const failed = r.steps.find((s) => !s.ok);
+  $("verdict").className = "verdict " + (r.ok ? "pass" : "fail");
+  $("verdict").textContent = r.ok ? "Verified: this book is on the tape, under a head signed by voters " + r.signed_by.join(", ") + "."
+    : "Not verified: failed at " + (failed ? failed.name : "an unknown step") + (failed ? " (" + failed.detail + ")" : "") + ".";
+  try { renderBook(b); } catch (e) { $("book").innerHTML = '<p class="empty">The book could not be shown.</p>'; }
+  const hd = b.head || {};
+  $("head").innerHTML = [["Incarnation", hd.incarnation], ["Tick", hd.tick], ["Tree size", hd.tree_size], ["Root", hd.root],
+    ["Entry", b.leaf && b.leaf.index], ["Proof hashes", Array.isArray(b.proof) ? b.proof.length : "?"]]
+    .map(([k, v]) => "<dt>" + k + "</dt><dd>" + esc(v === undefined ? "?" : v) + "</dd>").join("");
+  $("keys").innerHTML = ["1", "2", "3"].map((v) => {
+    const fp = r.fingerprints[v];
+    const pin = PINNED ? (fp && PINNED[v] === fp ? " \u00b7 matches published" : " \u00b7 not the published key") : "";
+    return "<dt>Voter " + v + "</dt><dd>" + (fp ? esc(fp) + esc(pin) : "no key") + (r.signed_by.includes(Number(v)) ? " \u00b7 signed" : "") + "</dd>";
+  }).join("");
+}
+function load(bundle, label) {
+  original = bundle; tampered = false;
+  $("tamper").disabled = false; $("tamper").setAttribute("aria-pressed", "false"); $("tamper").textContent = "Change one bid size";
+  $("source").textContent = label;
+  check();
+}
+$("file").addEventListener("change", async (ev) => {
+  const f = ev.target.files[0]; if (!f) return;
+  try { load(JSON.parse(await f.text()), f.name); }
+  catch (e) { $("verdict").className = "verdict fail"; $("verdict").textContent = "Not verified: " + f.name + " is not valid JSON."; }
+});
+$("tamper").addEventListener("click", () => {
+  tampered = !tampered;
+  $("tamper").setAttribute("aria-pressed", String(tampered));
+  $("tamper").textContent = tampered ? "Undo the change" : "Change one bid size";
+  check();
+});
+if (!window.crypto || !window.crypto.subtle) { $("verdict").className = "verdict fail"; $("verdict").textContent = "This browser has no WebCrypto, so it cannot check a bundle."; }
+else if (SAMPLE) load(SAMPLE, "Example bundle built into this page");
+</script>

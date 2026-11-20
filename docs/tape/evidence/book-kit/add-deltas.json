@@ -1,0 +1,39 @@
+{
+ "client": "python3 -B tests/book_kit_traps.py add-deltas",
+ "passed": false,
+ "scenarios": [
+  {
+   "counts": {
+    "building": 12,
+    "checked": 16,
+    "frames": 28,
+    "resubscribes": 0,
+    "stale": 0,
+    "unchecked": 0,
+    "valid": 16
+   },
+   "first_failure": {
+    "first_difference": {
+     "client": [
+      "165.516",
+      "0.266",
+      "2"
+     ],
+     "expected": [
+      "165.516",
+      "0.133",
+      "2"
+     ],
+     "level": 0,
+     "side": "bids"
+    },
+    "next_seqnum": 170401,
+    "reason": "wrong book",
+    "symbol": "NVDAC-USDC"
+   },
+   "missing": null,
+   "passed": false,
+   "scenario": "clean"
+  }
+ ]
+}

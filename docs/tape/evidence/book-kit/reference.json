@@ -1,0 +1,21 @@
+{
+ "client": "python3 -B tools/book-kit/reference_book.py",
+ "passed": true,
+ "scenarios": [
+  {
+   "counts": {
+    "building": 95,
+    "checked": 23723,
+    "frames": 23818,
+    "resubscribes": 0,
+    "stale": 0,
+    "unchecked": 0,
+    "valid": 23723
+   },
+   "first_failure": null,
+   "missing": null,
+   "passed": true,
+   "scenario": "clean"
+  }
+ ]
+}

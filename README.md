@@ -51,8 +51,14 @@ flowchart LR
   books against the tape's, update by update.
 
 Design records: [ADR 0030](docs/adr/0030-the-verifiable-tape-is-a-separate-raft-group.md) (the locked design),
-[guarantees](docs/tape/GUARANTEES.md), [decision log](docs/tape/DECISIONS.md) (D-01 to D-66, every choice with its
+[guarantees](docs/tape/GUARANTEES.md), [decision log](docs/tape/DECISIONS.md) (D-01 to D-67, every choice with its
 reason), [runbook](docs/tape/RUNBOOK.md), [test map](docs/tape/TEST_MAP.md).
+
+**Evidence:** [`docs/tape/evidence/`](docs/tape/evidence/README.md) backs every number below with the real output
+that produced it: the offline verification of each segment, the report's `summary.json` and `report.html`, the
+voters' public keys and fingerprints, a real proof bundle and the [proof page](docs/tape/evidence/proof/proof.html),
+the book-builder runs on the real stream, and the test and mutation logs. All of it was regenerated on 2026-11-20 at
+`8577e42`, and the reruns matched the originally published outputs byte for byte.
 
 ## Results
 
@@ -130,6 +136,31 @@ megabyte-per-second floods, a log that outgrew memory, and a recorder whose back
 raced the feed's one-request-at-a-time rule. Each is fixed, tested and recorded (D-40 to D-58): per-follower byte
 budgets, backed-off probes, an Aeron MTU that fits the tunnel, 4-hour segments, a queued control channel, and a
 per-host watchdog that stops the tape if it ever floods the network and restarts it once the link is quiet.
+
+### Two machines, after the fixes (2026-11-13)
+
+NUC2 failed on the evening of 2026-11-12 and has stayed down. NUC1 and the Pi kept recording, and two complete,
+linked segments from 2026-11-13 (12:01 to 19:13 UTC, through the US open) verify offline with 2-of-3 signatures and
+no stops:
+
+| Measure | Result |
+|---|---|
+| Update verdicts | 274,683 |
+| Identical at both live recorders | **99.95%** (151 seen by one only), at least 99.7% in every hour |
+| Divergent | **0** |
+| Arrival spread, NUC1 to Pi | p50 10 ms, p90 24 ms, p99 105 ms |
+| Sequence gaps, crossed books, EBBO mismatches | 0 on every book |
+| Trades consistent with the book | 609 of 681 (89%), 26 late, 46 unexplained |
+
+The run ended at 19:13 UTC, and all the signs point to NUC1's disk filling at that moment. The voter's last head
+file, written then, is empty, because the voter never checked that the write succeeded. The verifier refuses that file, as it should, and the [evidence](docs/tape/evidence/README.md#two-recorder-run-2026-11-13)
+records the fix it needs.
+
+### Where it stands (2026-11-20)
+
+The tape is stopped. NUC2 is down, NUC1's root filesystem is at 100%, and the Pi's rotation timer still creates
+an empty segment every four hours. Everything published here is reproducible from
+the archived segments with the tools in this repository.
 
 ## Examples
 
@@ -297,6 +328,7 @@ test cases in the ADR to these tests.
 | `deploy/tape/` | Container image, systemd units, rotation, watchdog, Prometheus and Grafana |
 | `tests/test_tape_*.py`, `tests/tape_*_tests.cpp` | Tests; `tests/tape_oracles/` is the independent reference |
 | `docs/tape/` | Guarantees, decisions, plans, runbook, findings, test map |
+| `docs/tape/evidence/` | Real outputs behind every published number: verification, reports, proof page, kit runs, test logs |
 
 ## Built on Velocita
 
@@ -308,8 +340,9 @@ group with its own ports, keys and data. The trading code is still here and stil
 
 ## Data and scope
 
-Recorded feed data stays on the recording machines and is never committed; reports carry aggregates only. Proof
-bundles hold one book's levels and stay private like the rest of the output; the book-builder kit's committed
-fixtures are synthetic, and its reports never contain message text. All
+Recorded feed data stays on the recording machines and is never committed; reports carry aggregates only. A proof
+bundle holds one book's levels; one real NVDAC-USDC bundle is published in the evidence on purpose so that a proof
+can be checked end to end, and every other bundle stays private. The book-builder kit's committed fixtures are
+synthetic, and its reports never contain message text. All
 three recorders sit on one home network, so results describe delivery to one location, and only the no-login feed
 tier is measured. Raw-feed redistribution is out of scope.

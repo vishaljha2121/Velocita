@@ -1,0 +1,39 @@
+{
+ "client": "python3 -B tests/book_kit_traps.py floats",
+ "passed": false,
+ "scenarios": [
+  {
+   "counts": {
+    "building": 1,
+    "checked": 1,
+    "frames": 2,
+    "resubscribes": 0,
+    "stale": 0,
+    "unchecked": 0,
+    "valid": 1
+   },
+   "first_failure": {
+    "first_difference": {
+     "client": [
+      "163.682",
+      "2.142999999",
+      "1"
+     ],
+     "expected": [
+      "163.682",
+      "2.143",
+      "1"
+     ],
+     "level": 8,
+     "side": "bids"
+    },
+    "next_seqnum": 170400,
+    "reason": "wrong book",
+    "symbol": "NVDAC-USDC"
+   },
+   "missing": null,
+   "passed": false,
+   "scenario": "clean"
+  }
+ ]
+}

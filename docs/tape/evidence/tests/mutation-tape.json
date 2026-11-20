@@ -1,0 +1,240 @@
+[
+ {
+  "mutant": "close-one-tick-late",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_silent_recorder_closes_at_exactly_n_ticks",
+  "verdict": "KILLED",
+  "detail": "PSHOT_COMPLETE', 5, 15611285196184187945, '1/3', 'n_ticks', 2, 7),\n+  (32, 'SNAPSHOT_COMPLETE', 5, 15683342790222115870, '1/3', 'n_ticks', 4, 9),\n+  (32, 'SNAPSHOT_COMPLETE', 5, 15827457978297971764, '1/3', 'n_ticks', 1, 5),\n+  (32, 'UPDATE', 5, 0, '2/3', 'n_ticks', 3, 10)] : index 16\n\n----------------------------------------------------------------------\nRan 1 test in 0.660s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "close-on-two-reports",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_all_three_close_at_the_third_copy",
+  "verdict": "KILLED",
+  "detail": "^^^^^^\nAssertionError: Lists differ: [(32, 'UPDATE', 5, 0, '2/3', 'all_reported', 3, 10)] != []\n\nFirst list contains 1 additional elements.\nFirst extra element 0:\n(32, 'UPDATE', 5, 0, '2/3', 'all_reported', 3, 10)\n\n- [(32, 'UPDATE', 5, 0, '2/3', 'all_reported', 3, 10)]\n+ [] : index 11\n\n----------------------------------------------------------------------\nRan 1 test in 1.627s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "count-duplicate-copy",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_a_recorders_second_copy_is_ignored",
+  "verdict": "KILLED",
+  "detail": "/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-e_ki_kkt/tests/test_tape_core.py\", line 86, in compare\n    self.assertEqual(row[\"state\"], w[\"state\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'unknown' != 'valid'\n- unknown\n+ valid\n : index 7\n\n----------------------------------------------------------------------\nRan 1 test in 1.377s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "late-copy-reopens",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_late_divergent_copy_makes_the_book_unknown_without_reopening",
+  "verdict": "KILLED",
+  "detail": "9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-08vmziah/tests/test_tape_core.py\", line 86, in compare\n    self.assertEqual(row[\"state\"], w[\"state\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'valid' != 'unknown'\n- valid\n+ unknown\n : index 16\n\n----------------------------------------------------------------------\nRan 1 test in 3.103s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "majority-vote",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_three_versions_are_divergent_not_a_majority",
+  "verdict": "KILLED",
+  "detail": ", 0, '3/3', 'all_reported', 7, 10)\n(32, 'UPDATE', 5, 0, 'divergent', 'all_reported', 7, 10)\n\n- [(32, 'UPDATE', 5, 0, '3/3', 'all_reported', 7, 10)]\n?                        ^^^\n\n+ [(32, 'UPDATE', 5, 0, 'divergent', 'all_reported', 7, 10)]\n?                        ^^^^^^^^^\n : index 12\n\n----------------------------------------------------------------------\nRan 1 test in 0.095s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "evict-newest",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_capacity_closes_the_oldest",
+  "verdict": "KILLED",
+  "detail": " 4)]\n\nFirst differing element 0:\n(32, 'UPDATE', 253, 0, '1/3', 'capacity', 1, 259)\n(32, 'SNAPSHOT', 0, 4426743158974773281, '1/3', 'capacity', 1, 4)\n\n- [(32, 'UPDATE', 253, 0, '1/3', 'capacity', 1, 259)]\n+ [(32, 'SNAPSHOT', 0, 4426743158974773281, '1/3', 'capacity', 1, 4)] : index 260\n\n----------------------------------------------------------------------\nRan 1 test in 0.152s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "accept-tick-jump",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_ticks_must_be_consecutive",
+  "verdict": "KILLED",
+  "detail": "~~~~^^^^^^^^^\n  File \"/var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-mepazu1s/tests/test_tape_core.py\", line 84, in compare\n    self.assertEqual(row[\"code\"], w[\"code\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 0 != 8 : index 3\n\n----------------------------------------------------------------------\nRan 1 test in 3.100s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "ignore-divergence",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_three_versions_are_divergent_not_a_majority",
+  "verdict": "KILLED",
+  "detail": "9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-hnf2y7a8/tests/test_tape_core.py\", line 86, in compare\n    self.assertEqual(row[\"state\"], w[\"state\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'valid' != 'unknown'\n- valid\n+ unknown\n : index 12\n\n----------------------------------------------------------------------\nRan 1 test in 0.096s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "apply-out-of-order",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_held_message_applies_in_order_when_it_arrives_in_time",
+  "verdict": "KILLED",
+  "detail": "or: '8afa7cf769e41a1900b57a027bfabeee2e899f1e5880d0860672c9b015f654e6' != '879b666fc870097d3b9dd742ff07f1ba30102213f132e61087b9773b41d02aa3'\n- 8afa7cf769e41a1900b57a027bfabeee2e899f1e5880d0860672c9b015f654e6\n+ 879b666fc870097d3b9dd742ff07f1ba30102213f132e61087b9773b41d02aa3\n : index 6\n\n----------------------------------------------------------------------\nRan 1 test in 1.867s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "wait-unbounded",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_missing_message_makes_the_book_unknown_after_n_ticks",
+  "verdict": "KILLED",
+  "detail": "9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-9hm1_wh1/tests/test_tape_core.py\", line 86, in compare\n    self.assertEqual(row[\"state\"], w[\"state\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'valid' != 'unknown'\n- valid\n+ unknown\n : index 12\n\n----------------------------------------------------------------------\nRan 1 test in 1.770s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "full-buffer-silent",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_reorder_buffer_full_is_unknown_at_once",
+  "verdict": "KILLED",
+  "detail": "9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-qma0kxut/tests/test_tape_core.py\", line 86, in compare\n    self.assertEqual(row[\"state\"], w[\"state\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'valid' != 'unknown'\n- valid\n+ unknown\n : index 14\n\n----------------------------------------------------------------------\nRan 1 test in 2.854s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "apply-stale-snapshot",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_stale_snapshot_is_ignored_and_interleaved_snapshot_applies_at_complete",
+  "verdict": "KILLED",
+  "detail": "xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-odapdk36/tests/test_tape_core.py\", line 86, in compare\n    self.assertEqual(row[\"state\"], w[\"state\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'building' != 'valid'\n- building\n+ valid\n : index 7\n\n----------------------------------------------------------------------\nRan 1 test in 3.107s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "hash-unknown-book",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_capacity_while_draining_leaves_no_hash",
+  "verdict": "KILLED",
+  "detail": "\n    self.assertEqual(row[\"hash\"], w[\"hash\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: '6a14a9e6f13cb5580ffe5798e7c0754d6aa6b315f0549416dd66e71dbd854051' != ''\n- 6a14a9e6f13cb5580ffe5798e7c0754d6aa6b315f0549416dd66e71dbd854051\n : index 8\n\n----------------------------------------------------------------------\nRan 1 test in 2.469s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "silent-level-overflow",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_level_capacity_makes_the_book_unknown",
+  "verdict": "KILLED",
+  "detail": "_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-85_9t_vt/tests/test_tape_core.py\", line 86, in compare\n    self.assertEqual(row[\"state\"], w[\"state\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'building' != 'unknown'\n- building\n+ unknown\n : index 5\n\n----------------------------------------------------------------------\nRan 1 test in 2.340s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "round-precision",
+  "file": "src/tape_frame.cpp",
+  "test": "test_decimal_boundaries",
+  "verdict": "KILLED",
+  "detail": "_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-thmq1v5b/tests/test_tape_core.py\", line 86, in compare\n    self.assertEqual(row[\"state\"], w[\"state\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'building' != 'unknown'\n- building\n+ unknown\n : index 4\n\n----------------------------------------------------------------------\nRan 1 test in 2.260s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "accept-duplicate-request",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_duplicate_and_out_of_order_requests_are_refused",
+  "verdict": "KILLED",
+  "detail": "^^^^^^^^^^^^^\n  File \"/var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-03ti8wdc/tests/test_tape_core.py\", line 84, in compare\n    self.assertEqual(row[\"code\"], w[\"code\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 2 != 1 : index 5\n\n----------------------------------------------------------------------\nRan 1 test in 2.394s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "accept-request-gap",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_duplicate_and_out_of_order_requests_are_refused",
+  "verdict": "KILLED",
+  "detail": "^^^^^^^^^^^^^\n  File \"/var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-jmsjr8r4/tests/test_tape_core.py\", line 84, in compare\n    self.assertEqual(row[\"code\"], w[\"code\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 0 != 2 : index 6\n\n----------------------------------------------------------------------\nRan 1 test in 3.105s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "skip-part-hash",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_split_observation_matches_a_whole_one",
+  "verdict": "KILLED",
+  "detail": "~~^^^^^^^^^^^\n  File \"/var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-4zick03t/tests/test_tape_core.py\", line 84, in compare\n    self.assertEqual(row[\"code\"], w[\"code\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 4 != 7 : index 6\n\n----------------------------------------------------------------------\nRan 1 test in 3.019s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "node-hash-prefix",
+  "file": "src/tape_merkle.cpp",
+  "test": "test_cpp_merkle_matches_rfc_vectors",
+  "verdict": "KILLED",
+  "detail": "ac54203e7cc696cf0dfcb42c92a1d9dbaf70ad9e[428 chars]328']\n\nFirst differing element 1:\n'3fa13040794802ef854096500f3ea3b85b4301b0ece339e91ed7c836185b4832'\n'fac54203e7cc696cf0dfcb42c92a1d9dbaf70ad9e621f4bd8d98662f00e3c125'\n\nDiff is 1065 characters long. Set self.maxDiff to None to see it.\n\n----------------------------------------------------------------------\nRan 1 test in 2.008s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "frontier-order",
+  "file": "src/tape_merkle.cpp",
+  "test": "test_cluster_root_equals_reference_root_and_proofs_verify",
+  "verdict": "KILLED",
+  "detail": "sertionError: 'f7f16747716494c22c70d146be8901718e4b0f2cf9842c1ee0a0bd9843dacf54' != 'f01d06630908cec855746a798b84ac65fc28d50ea68c671d11042270e7533a60'\n- f7f16747716494c22c70d146be8901718e4b0f2cf9842c1ee0a0bd9843dacf54\n+ f01d06630908cec855746a798b84ac65fc28d50ea68c671d11042270e7533a60\n\n\n----------------------------------------------------------------------\nRan 1 test in 3.105s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "integrity-changes-book",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_integrity_checks_never_change_books",
+  "verdict": "KILLED",
+  "detail": "f10f76dd1050109254e7efd599e8f991ce58db'),\n   ('unknown', ''),\n   ('unknown', ''),\n   ('unknown', ''),\n   ('unknown', ''),\n-  ('valid', 'f020e268b7c43c90a24bbfe7e9f10f76dd1050109254e7efd599e8f991ce58db')]\n+  ('valid', '1050fcfe7549e8328cf2587688c3fe426e9d7689f04e115af06a025a34c73c71')]\n\n----------------------------------------------------------------------\nRan 1 test in 0.683s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "snapshots-compared-across-copies",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_snapshots_from_different_subscriptions_are_not_copies",
+  "verdict": "KILLED",
+  "detail": "_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-lgg0dbze/tests/test_tape_core.py\", line 86, in compare\n    self.assertEqual(row[\"state\"], w[\"state\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'unknown' != 'building'\n- unknown\n+ building\n : index 6\n\n----------------------------------------------------------------------\nRan 1 test in 1.263s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "snapshot-compared-too-early",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_snapshots_from_different_subscriptions_are_not_copies",
+  "verdict": "KILLED",
+  "detail": " self.assertFalse(any(r[\"flags\"] & 0x20 for r in rows), \"a mid-batch snapshot is not a disagreement\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: True is not false : a mid-batch snapshot is not a disagreement\n\n----------------------------------------------------------------------\nRan 1 test in 2.108s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "voter-proposes-duplicates",
+  "file": "src/tape_voter.cpp",
+  "test": "the leader never proposed a duplicate or out-of-order request",
+  "verdict": "KILLED",
+  "detail": "FAIL: the leader never proposed a duplicate or out-of-order request\n1 failures\n"
+ },
+ {
+  "mutant": "voter-accepts-recorder-tick",
+  "file": "src/tape_voter.cpp",
+  "test": "a recorder's tick and a recorder impersonating another are refused by every voter",
+  "verdict": "KILLED",
+  "detail": "FAIL: a recorder's tick and a recorder impersonating another are refused by every voter\n1 failures\n"
+ },
+ {
+  "mutant": "head-never-gains-signatures",
+  "file": "src/tape_voter.cpp",
+  "test": "a published head gains the third signature once it lands",
+  "verdict": "KILLED",
+  "detail": "FAIL: a published head gains the third signature once it lands\nFAIL: a published head gains the third signature once it lands\n2 failures\n"
+ },
+ {
+  "mutant": "replica-resends-in-flight",
+  "file": "src/tape_replica.cpp",
+  "test": "each entry crosses to each follower about once over a slow link",
+  "verdict": "KILLED",
+  "detail": "FAIL: each entry crosses to each follower about once over a slow link (4774 entries sent for 303)\nFAIL: a silent follower gets a backed-off probe, not the backlog (9600 entries resent in 60 s)\n2 failures\n"
+ },
+ {
+  "mutant": "recorder-resends-without-backoff",
+  "file": "src/tape_recorder.cpp",
+  "test": "resends back off instead of repeating every interval",
+  "verdict": "KILLED",
+  "detail": "FAIL: resends back off instead of repeating every interval (630 resends of 21 items in 60 s)\n1 failures\n"
+ },
+ {
+  "mutant": "replica-ignores-byte-budget",
+  "file": "src/tape_replica.cpp",
+  "test": "no second sends a follower more than the budget plus one burst",
+  "verdict": "KILLED",
+  "detail": "FAIL: no second sends a follower more than the budget plus one burst (142462 bytes)\n1 failures\n"
+ },
+ {
+  "mutant": "replica-resends-without-backoff",
+  "file": "src/tape_replica.cpp",
+  "test": "a silent follower gets a backed-off probe, not the backlog",
+  "verdict": "KILLED",
+  "detail": "FAIL: a silent follower gets a backed-off probe, not the backlog (960 entries resent in 60 s)\n1 failures\n"
+ },
+ {
+  "mutant": "recorder-ignores-byte-budget",
+  "file": "src/tape_recorder.cpp",
+  "test": "no second sends more than the budget plus one burst",
+  "verdict": "KILLED",
+  "detail": "FAIL: no second sends more than the budget plus one burst (92046 bytes)\n1 failures\n"
+ },
+ {
+  "mutant": "segment-start-twice",
+  "file": "src/tape_reducer.cpp",
+  "test": "test_a_segment_records_its_predecessor_once",
+  "verdict": "KILLED",
+  "detail": "~~~^^^^^^^^^\n  File \"/var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tape-mut-_sg_lz8x/tests/test_tape_core.py\", line 84, in compare\n    self.assertEqual(row[\"code\"], w[\"code\"], f\"index {i}\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 0 != 11 : index 4\n\n----------------------------------------------------------------------\nRan 1 test in 0.116s\n\nFAILED (failures=1)\n"
+ },
+ {
+  "mutant": "skip-hmac-check",
+  "file": "src/tape_auth.cpp",
+  "test": "a frame sealed with the wrong key is rejected",
+  "verdict": "KILLED",
+  "detail": "FAIL: a frame sealed with the wrong key is rejected\n1 failures\n"
+ },
+ {
+  "mutant": "wal-accepts-corruption",
+  "file": "src/tape_wal.cpp",
+  "test": "mid-log corruption refuses recovery",
+  "verdict": "KILLED",
+  "detail": "FAIL: mid-log corruption refuses recovery\n1 failures\n"
+ }
+]

@@ -1,0 +1,21 @@
+{
+ "client": "python3 -B tests/book_kit_traps.py serve-before-complete",
+ "passed": true,
+ "scenarios": [
+  {
+   "counts": {
+    "building": 0,
+    "checked": 23818,
+    "frames": 23818,
+    "resubscribes": 0,
+    "stale": 0,
+    "unchecked": 0,
+    "valid": 23818
+   },
+   "first_failure": null,
+   "missing": null,
+   "passed": true,
+   "scenario": "clean"
+  }
+ ]
+}

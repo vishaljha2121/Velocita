@@ -1,0 +1,37 @@
+Test project build
+      Start  1: tape-core-tests
+ 1/16 Test  #1: tape-core-tests ............................   Passed    5.70 sec
+      Start  2: tape-replica-tests
+ 2/16 Test  #2: tape-replica-tests .........................   Passed    5.62 sec
+      Start  3: tape-recorder-tests
+ 3/16 Test  #3: tape-recorder-tests ........................   Passed   48.36 sec
+      Start  4: tape-reducer-is-pure
+ 4/16 Test  #4: tape-reducer-is-pure .......................   Passed    0.04 sec
+      Start  5: tape-never-trades-velocita-tape-voter
+ 5/16 Test  #5: tape-never-trades-velocita-tape-voter ......   Passed    0.04 sec
+      Start  6: tape-never-trades-velocita-tape-recorder
+ 6/16 Test  #6: tape-never-trades-velocita-tape-recorder ...   Passed    0.03 sec
+      Start  7: tape-never-trades-velocita-tape-verify
+ 7/16 Test  #7: tape-never-trades-velocita-tape-verify .....   Passed    0.02 sec
+      Start  8: tape-never-trades-velocita-tape-keys
+ 8/16 Test  #8: tape-never-trades-velocita-tape-keys .......   Passed    0.01 sec
+      Start  9: tape-exporter-links-no-tape-code
+ 9/16 Test  #9: tape-exporter-links-no-tape-code ...........   Passed    0.01 sec
+      Start 10: tape-watchdog-tests
+10/16 Test #10: tape-watchdog-tests ........................   Passed   26.37 sec
+      Start 11: tape-rotate-tests
+11/16 Test #11: tape-rotate-tests ..........................   Passed    2.21 sec
+      Start 12: tape-report-tests
+12/16 Test #12: tape-report-tests ..........................   Passed    8.43 sec
+      Start 13: tape-proof-tests
+13/16 Test #13: tape-proof-tests ...........................   Passed    2.33 sec
+      Start 14: book-kit-tests
+14/16 Test #14: book-kit-tests .............................   Passed    4.27 sec
+      Start 15: tape-submitter-tests
+15/16 Test #15: tape-submitter-tests .......................   Passed    2.45 sec
+      Start 16: tape-voter-tests
+16/16 Test #16: tape-voter-tests ...........................   Passed    4.49 sec
+
+100% tests passed out of 16
+
+Total Test time (real) = 110.40 sec

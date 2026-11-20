@@ -572,3 +572,18 @@ the segment verifies. Shipped fixtures are synthetic (`tools/book-kit/fixtures`)
 real stream from segment 1794499200 the reference builder matched all 23,723 valid books; four of the five trap
 clients failed within the first books, and serving before SNAPSHOT_COMPLETE did no harm there because every real
 snapshot was a single message. Tests: `book-kit-tests` (11).
+
+**D-67. Evidence directory, a two-recorder report, and an empty head file (2026-11-20).** `docs/tape/evidence/`
+holds the real outputs behind every published number, regenerated at `8577e42`: offline verification of each
+segment, both reports' `summary.json` and `report.html`, the public keys and fingerprints, the NVDAC-USDC proof
+bundle and `proof.html` (published deliberately, owner decision, so a proof can be checked end to end; every other
+bundle stays private), the book-kit runs on recorder 1's real stream, `ctest` (16 of 16) and the mutation run (34 of
+34 killed). The 2026-11-12 report, bundle and page reran byte-identical. NUC2 is still down, so the evidence uses
+NUC1 and the Pi only. NUC1 held two linked segments from 2026-11-13 (12:01 to 19:13 UTC, voters 1 and 2 signing):
+274,683 verdicts, 99.95% identical at both live recorders, 0 divergent, spread p50 10 ms and p99 105 ms, 609 of 681
+trades consistent. The last head of segment 1794585600 (`head-11520.json`) is 0 bytes, written at 19:13:23 UTC as
+NUC1's root filesystem filled (100% on 2026-11-20). `atomic_write` in `tape_voter.cpp` renames its temporary file
+without checking the write, so a full disk publishes an empty head, and on a re-publish it could replace a good one.
+The verifier refuses the file; the evidence verifies the segment with that one head left out and says so. Fix to come: check the write and fsync
+before renaming, and alert on free disk space. The tape is stopped. The Pi's rotation timer keeps creating empty
+segments.

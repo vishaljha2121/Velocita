@@ -1,0 +1,25 @@
+{
+ "client": "python3 -B tests/book_kit_traps.py snapshot-is-last",
+ "passed": false,
+ "scenarios": [
+  {
+   "counts": {
+    "building": 2,
+    "checked": 2,
+    "frames": 4,
+    "resubscribes": 0,
+    "stale": 0,
+    "unchecked": 0,
+    "valid": 2
+   },
+   "first_failure": {
+    "next_seqnum": 70881,
+    "reason": "wrong book",
+    "symbol": "TSLAC-USDC"
+   },
+   "missing": null,
+   "passed": false,
+   "scenario": "clean"
+  }
+ ]
+}
